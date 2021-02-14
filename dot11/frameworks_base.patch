@@ -1,0 +1,68 @@
+From 6ed560e898b6160a227beb655d26392d043f39e8 Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Thu, 11 Feb 2021 11:49:50 +0800
+Subject: [PATCH] zygote: Don't make seccomp depend on SELinux enforcing
+
+This change was originally submitted to AOSP as c/1571580, but the change has
+since been removed from Gerrit. This is necessary to avoid privilege escalation
+that makes use of privileges that won't be dropped if SELinux is set.
+
+RIP authorship, but I don't care for now.
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: Iad3a929e9ad9daf82d9d817740b53d1757b53cbe
+---
+ core/jni/com_android_internal_os_Zygote.cpp | 16 ----------------
+ 1 file changed, 16 deletions(-)
+
+diff --git a/core/jni/com_android_internal_os_Zygote.cpp b/core/jni/com_android_internal_os_Zygote.cpp
+index 9eede83e21e..be00f6383e5 100644
+--- a/core/jni/com_android_internal_os_Zygote.cpp
++++ b/core/jni/com_android_internal_os_Zygote.cpp
+@@ -127,8 +127,6 @@ static jclass gZygoteClass;
+ static jmethodID gCallPostForkSystemServerHooks;
+ static jmethodID gCallPostForkChildHooks;
+ 
+-static bool gIsSecurityEnforced = true;
+-
+ /**
+  * True if the app process is running in its mount namespace.
+  */
+@@ -632,11 +630,6 @@ static void PreApplicationInit() {
+ }
+ 
+ static void SetUpSeccompFilter(uid_t uid, bool is_child_zygote) {
+-  if (!gIsSecurityEnforced) {
+-    ALOGI("seccomp disabled by setenforce 0");
+-    return;
+-  }
+-
+   // Apply system or app filter based on uid.
+   if (uid >= AID_APP_START) {
+     if (is_child_zygote) {
+@@ -2198,11 +2191,6 @@ static void com_android_internal_os_Zygote_nativeAllowFileAcrossFork(
+ 
+ static void com_android_internal_os_Zygote_nativeInstallSeccompUidGidFilter(
+         JNIEnv* env, jclass, jint uidGidMin, jint uidGidMax) {
+-  if (!gIsSecurityEnforced) {
+-    ALOGI("seccomp disabled by setenforce 0");
+-    return;
+-  }
+-
+   bool installed = install_setuidgid_seccomp_filter(uidGidMin, uidGidMax);
+   if (!installed) {
+       RuntimeAbort(env, __LINE__, "Could not install setuid/setgid seccomp filter.");
+@@ -2280,10 +2268,6 @@ static void com_android_internal_os_Zygote_nativeInitNativeState(JNIEnv* env, jc
+    * Security Initialization
+    */
+ 
+-  // security_getenforce is not allowed on app process. Initialize and cache
+-  // the value before zygote forks.
+-  gIsSecurityEnforced = security_getenforce();
+-
+   selinux_android_seapp_context_init();
+ 
+   /*
+-- 
+2.30.1
+

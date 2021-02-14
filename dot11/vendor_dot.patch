@@ -1,0 +1,187 @@
+From 85436ebab1fe0f8e16fdefa695a9c8d1651a4a12 Mon Sep 17 00:00:00 2001
+From: Danny Lin <danny@kdrag0n.dev>
+Date: Sun, 13 Dec 2020 18:48:48 -0800
+Subject: [PATCH 1/4] wifi: Increase 5 GHz network signal tolerance
+
+On devices with cellular data available, I've been experiencing Wi-Fi
+dropouts on 5 GHz networks where it disconnects and falls back to
+cellular data around a RSSI of -77 dBm. While the Wi-Fi quality may not
+be ideal at this signal level, it is still better to stay on it than
+switch to cellular data because switching networks can be very
+disruptive to the user.
+
+To make matters worse, the signal tends to oscillate around -77 dBm in
+my case, which causes it to oscillate between Wi-Fi and cellular data
+every few seconds. This causes far more disruptions than staying on weak
+Wi-Fi would.
+
+These signal levels were measured empirically on a Pixel 5, but they
+should apply to most devices. 2.4 GHz values were found to be more or
+less accurate, but 5 GHz networks continued to work past the AOSP
+thresholds. The iPhone 6s was also content with these signal levels and
+still displayed 2 of 3 signal levels at -77 dBm.
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ .../net/wifi/service/res/values/config.xml    | 24 +++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+ create mode 100644 overlay/frameworks/opt/net/wifi/service/res/values/config.xml
+
+diff --git a/overlay/frameworks/opt/net/wifi/service/res/values/config.xml b/overlay/frameworks/opt/net/wifi/service/res/values/config.xml
+new file mode 100644
+index 00000000..746f8cea
+--- /dev/null
++++ b/overlay/frameworks/opt/net/wifi/service/res/values/config.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++    Copyright (C) 2020 The Proton AOSP Project
++
++    Licensed under the Apache License, Version 2.0 (the "License");
++    you may not use this file except in compliance with the License.
++    You may obtain a copy of the License at
++
++        http://www.apache.org/licenses/LICENSE-2.0
++
++    Unless required by applicable law or agreed to in writing, software
++    distributed under the License is distributed on an "AS IS" BASIS,
++    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++    See the License for the specific language governing permissions and
++    limitations under the License.
++-->
++<resources>
++    <!-- Integer parameters of the wifi to cellular handover feature
++         wifi should not stick to bad networks -->
++    <!-- Integer threshold for low network score, should be somewhat less than the entry threshhold -->
++    <integer translatable="false" name="config_wifi_framework_wifi_score_bad_rssi_threshold_5GHz">-90</integer>
++    <!-- Integer threshold, do not connect to APs with RSSI lower than the entry threshold -->
++    <integer translatable="false" name="config_wifi_framework_wifi_score_entry_rssi_threshold_5GHz">-85</integer>
++</resources>
+-- 
+2.30.1
+
+
+From 975a686a3fdcc2af27769516499bc56fd03a6cf0 Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Thu, 11 Feb 2021 12:20:10 +0800
+Subject: [PATCH 2/4] roomservice: Fix inconsistencies between spaces and tabs
+
+* Python3 doesn't like this
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: Idc3e8b05d77f03afb32297a5b3fdeb29f7ccdb30
+---
+ build/tools/roomservice.py | 26 +++++++++++++-------------
+ 1 file changed, 13 insertions(+), 13 deletions(-)
+
+diff --git a/build/tools/roomservice.py b/build/tools/roomservice.py
+index 79a98533..c1804b75 100755
+--- a/build/tools/roomservice.py
++++ b/build/tools/roomservice.py
+@@ -144,16 +144,16 @@ def add_to_manifest(repos, fallback_branch=None):
+     for repo in repos:
+         repo_name = repo['repository']
+         repo_path = repo['target_path']
+-	if 'branch' in repo:
+-	    repo_branch=repo['branch']
+-	else:
+-	    repo_branch=custom_default_revision
+-	if 'remote' in repo:
+-	    repo_remote=repo['remote']
+-	elif "/" not in repo_name:
+-	    repo_remote=org_manifest
+-	elif "/" in repo_name:
+-	    repo_remote="github"
++        if 'branch' in repo:
++            repo_branch=repo['branch']
++        else:
++            repo_branch=custom_default_revision
++        if 'remote' in repo:
++            repo_remote=repo['remote']
++        elif "/" not in repo_name:
++            repo_remote=org_manifest
++        elif "/" in repo_name:
++            repo_remote="github"
+ 
+         if is_in_manifest(repo_path):
+             print('already exists: %s' % repo_path)
+@@ -176,9 +176,9 @@ def add_to_manifest(repos, fallback_branch=None):
+             project.set('revision', fallback_branch)
+         else:
+             print("Using default branch for %s" % repo_name)
+-	if 'clone-depth' in repo:
+-	    print("Setting clone-depth to %s for %s" % (repo['clone-depth'], repo_name))
+-	    project.set('clone-depth', repo['clone-depth'])
++        if 'clone-depth' in repo:
++            print("Setting clone-depth to %s for %s" % (repo['clone-depth'], repo_name))
++            project.set('clone-depth', repo['clone-depth'])
+         lm.append(project)
+ 
+     indent(lm)
+-- 
+2.30.1
+
+
+From d196a8760150f8cf389b3f7522d76fabf7023bba Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Thu, 11 Feb 2021 12:20:38 +0800
+Subject: [PATCH 3/4] version: Fix DOT_BUILD_DATE_UTC
+
+The whole fetching situation is already complicated. This is made worse by
+unnecessary use of `date -d` with all variables already fetched separately.
+
+Just re-use them, seriously.
+
+[jokes on you CRLF, this file was made on Windows, hence I have to run unix2dos]
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: I621149f05177074afe41072fd73ae438b2e99213
+---
+ config/version.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/config/version.mk b/config/version.mk
+index e7636149..9de65825 100644
+--- a/config/version.mk
++++ b/config/version.mk
+@@ -25,7 +25,7 @@ DOT_DATE_MONTH := $(shell date -u +%m)
+ DOT_DATE_DAY := $(shell date -u +%d)
+ DOT_DATE_HOUR := $(shell date -u +%H)
+ DOT_DATE_MINUTE := $(shell date -u +%M)
+-DOT_BUILD_DATE_UTC := $(shell date -d '$(DOT_DATE_YEAR)-$(DOT_DATE_MONTH)-$(DOT_DATE_DAY) $(DOT_DATE_HOUR):$(DOT_DATE_MINUTE) UTC' +%s)
++DOT_BUILD_DATE_UTC := $(DOT_DATE_YEAR)-$(DOT_DATE_MONTH)-$(DOT_DATE_DAY) $(DOT_DATE_HOUR):$(DOT_DATE_MINUTE) UTC
+ CUSTOM_BUILD_DATE := $(DOT_DATE_YEAR)$(DOT_DATE_MONTH)$(DOT_DATE_DAY)-$(DOT_DATE_HOUR)$(DOT_DATE_MINUTE)
+ 
+ ifeq ($(DOT_OFFICIAL), true)
+-- 
+2.30.1
+
+
+From 1b0bf585f5b2fd43e124ed5a919ab768dacfdd4f Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Thu, 11 Feb 2021 21:36:24 +0800
+Subject: [PATCH 4/4] BoardConfigKernel: Revert bone-breaking changes
+
+Perl libraries are in common folder ffs
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: I160a4941b7a8bf2d2d85c8d177b92e4214634eb5
+---
+ config/BoardConfigKernel.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/config/BoardConfigKernel.mk b/config/BoardConfigKernel.mk
+index edacb0a6..cdb2ed79 100644
+--- a/config/BoardConfigKernel.mk
++++ b/config/BoardConfigKernel.mk
+@@ -130,7 +130,7 @@ endif
+ TOOLS_PATH_OVERRIDE := \
+     PATH=$(BUILD_TOP)/prebuilts/tools-dot/$(HOST_OS)-x86/bin:$$PATH \
+     LD_LIBRARY_PATH=$(BUILD_TOP)/prebuilts/tools-dot/$(HOST_OS)-x86/lib:$$LD_LIBRARY_PATH \
+-    PERL5LIB=$(BUILD_TOP)/prebuilts/tools-dot/$(HOST_OS)-x86/lib/perl-base
++    PERL5LIB=$(BUILD_TOP)/prebuilts/tools-dot/common/perl-base
+ 
+ # Set DTBO image locations so the build system knows to build them
+ ifeq (true,$(filter true, $(TARGET_NEEDS_DTBOIMAGE) $(BOARD_KERNEL_SEPARATED_DTBO)))
+-- 
+2.30.1
+

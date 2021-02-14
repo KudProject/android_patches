@@ -1,0 +1,28 @@
+From 0a787e49f62f2581968f4fe012a7605b293f7de1 Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Thu, 11 Feb 2021 11:42:04 +0800
+Subject: [PATCH] Revert "core: makefile: Use 'release-keys' for build tag"
+
+This reverts commit 88131e49eec6b936c54e4aa1c5b6e360d473192b.
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ core/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/core/Makefile b/core/Makefile
+index 8ca3b1250..65e1d4548 100644
+--- a/core/Makefile
++++ b/core/Makefile
+@@ -339,7 +339,7 @@ endif
+ ifeq ($(DEFAULT_SYSTEM_DEV_CERTIFICATE),build/make/target/product/security/testkey)
+ BUILD_KEYS := test-keys
+ else
+-BUILD_KEYS := release-keys
++BUILD_KEYS := dev-keys
+ endif
+ BUILD_VERSION_TAGS += $(BUILD_KEYS)
+ BUILD_VERSION_TAGS := $(subst $(space),$(comma),$(sort $(BUILD_VERSION_TAGS)))
+-- 
+2.30.1
+
