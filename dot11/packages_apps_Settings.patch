@@ -1,0 +1,38 @@
+From 2c16b64001d868f342bd588212288bfed7e67aad Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Sun, 14 Feb 2021 20:52:14 +0800
+Subject: [PATCH] AndroidManifest: Forcibly hide RegulatoryInfoDisplayActivity
+
+Setting it to disabled isn't being respected here, so comment the entry.
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: I7ef49ce2c87e77a9902b37cc3c83556ededa5563
+---
+ AndroidManifest.xml | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index fe006e0e4a..2288593eb8 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -2645,7 +2645,7 @@
+                 android:value="true" />
+         </activity>
+ 
+-        <!-- Show regulatory info (from settings item or dialing "*#07#") -->
++        <!-- Show regulatory info (from settings item or dialing "*#07#")
+         <activity
+             android:name="RegulatoryInfoDisplayActivity"
+             android:label="@string/regulatory_labels"
+@@ -2656,7 +2656,7 @@
+             </intent-filter>
+             <meta-data android:name="com.android.settings.PRIMARY_PROFILE_CONTROLLED"
+                 android:value="true" />
+-        </activity>
++        </activity> -->
+ 
+         <!-- Confirmation dialog for enabling notification access from CompanionDeviceManager -->
+         <activity android:name=".notification.NotificationAccessConfirmationActivity"
+-- 
+2.30.1
+
