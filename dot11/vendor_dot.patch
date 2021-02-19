@@ -1,7 +1,7 @@
-From 85436ebab1fe0f8e16fdefa695a9c8d1651a4a12 Mon Sep 17 00:00:00 2001
+From ae01a01da5b952f03bb5f62de691897e8f952970 Mon Sep 17 00:00:00 2001
 From: Danny Lin <danny@kdrag0n.dev>
 Date: Sun, 13 Dec 2020 18:48:48 -0800
-Subject: [PATCH 1/4] wifi: Increase 5 GHz network signal tolerance
+Subject: [PATCH 1/5] wifi: Increase 5 GHz network signal tolerance
 
 On devices with cellular data available, I've been experiencing Wi-Fi
 dropouts on 5 GHz networks where it disconnects and falls back to
@@ -61,71 +61,10 @@ index 00000000..746f8cea
 2.30.1
 
 
-From 975a686a3fdcc2af27769516499bc56fd03a6cf0 Mon Sep 17 00:00:00 2001
-From: Albert I <kras@raphielgang.org>
-Date: Thu, 11 Feb 2021 12:20:10 +0800
-Subject: [PATCH 2/4] roomservice: Fix inconsistencies between spaces and tabs
-
-* Python3 doesn't like this
-
-Signed-off-by: Albert I <kras@raphielgang.org>
-Change-Id: Idc3e8b05d77f03afb32297a5b3fdeb29f7ccdb30
----
- build/tools/roomservice.py | 26 +++++++++++++-------------
- 1 file changed, 13 insertions(+), 13 deletions(-)
-
-diff --git a/build/tools/roomservice.py b/build/tools/roomservice.py
-index 79a98533..c1804b75 100755
---- a/build/tools/roomservice.py
-+++ b/build/tools/roomservice.py
-@@ -144,16 +144,16 @@ def add_to_manifest(repos, fallback_branch=None):
-     for repo in repos:
-         repo_name = repo['repository']
-         repo_path = repo['target_path']
--	if 'branch' in repo:
--	    repo_branch=repo['branch']
--	else:
--	    repo_branch=custom_default_revision
--	if 'remote' in repo:
--	    repo_remote=repo['remote']
--	elif "/" not in repo_name:
--	    repo_remote=org_manifest
--	elif "/" in repo_name:
--	    repo_remote="github"
-+        if 'branch' in repo:
-+            repo_branch=repo['branch']
-+        else:
-+            repo_branch=custom_default_revision
-+        if 'remote' in repo:
-+            repo_remote=repo['remote']
-+        elif "/" not in repo_name:
-+            repo_remote=org_manifest
-+        elif "/" in repo_name:
-+            repo_remote="github"
- 
-         if is_in_manifest(repo_path):
-             print('already exists: %s' % repo_path)
-@@ -176,9 +176,9 @@ def add_to_manifest(repos, fallback_branch=None):
-             project.set('revision', fallback_branch)
-         else:
-             print("Using default branch for %s" % repo_name)
--	if 'clone-depth' in repo:
--	    print("Setting clone-depth to %s for %s" % (repo['clone-depth'], repo_name))
--	    project.set('clone-depth', repo['clone-depth'])
-+        if 'clone-depth' in repo:
-+            print("Setting clone-depth to %s for %s" % (repo['clone-depth'], repo_name))
-+            project.set('clone-depth', repo['clone-depth'])
-         lm.append(project)
- 
-     indent(lm)
--- 
-2.30.1
-
-
-From d196a8760150f8cf389b3f7522d76fabf7023bba Mon Sep 17 00:00:00 2001
+From 6a3b5150f663e1b9278f431345701a5080abc217 Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Thu, 11 Feb 2021 12:20:38 +0800
-Subject: [PATCH 3/4] version: Fix DOT_BUILD_DATE_UTC
+Subject: [PATCH 2/5] version: Fix DOT_BUILD_DATE_UTC
 
 The whole fetching situation is already complicated. This is made worse by
 unnecessary use of `date -d` with all variables already fetched separately.
@@ -156,10 +95,10 @@ index e7636149..9de65825 100644
 2.30.1
 
 
-From 1b0bf585f5b2fd43e124ed5a919ab768dacfdd4f Mon Sep 17 00:00:00 2001
+From 145bd7d2c244798a2638767f0ae09042026369a9 Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Thu, 11 Feb 2021 21:36:24 +0800
-Subject: [PATCH 4/4] BoardConfigKernel: Revert bone-breaking changes
+Subject: [PATCH 3/5] BoardConfigKernel: Revert bone-breaking changes
 
 Perl libraries are in common folder ffs
 
@@ -170,7 +109,7 @@ Change-Id: I160a4941b7a8bf2d2d85c8d177b92e4214634eb5
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/config/BoardConfigKernel.mk b/config/BoardConfigKernel.mk
-index edacb0a6..cdb2ed79 100644
+index 30e4a6ec..4e4112a3 100644
 --- a/config/BoardConfigKernel.mk
 +++ b/config/BoardConfigKernel.mk
 @@ -130,7 +130,7 @@ endif
@@ -182,6 +121,68 @@ index edacb0a6..cdb2ed79 100644
  
  # Set DTBO image locations so the build system knows to build them
  ifeq (true,$(filter true, $(TARGET_NEEDS_DTBOIMAGE) $(BOARD_KERNEL_SEPARATED_DTBO)))
+-- 
+2.30.1
+
+
+From 48e11422c3a99aa9a4129a5bca0c92151d496a3e Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Wed, 17 Feb 2021 01:12:21 +0800
+Subject: [PATCH 4/5] packages: Omit SystemUpdates for unofficial builds
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: I48eadd5ff8841c56204d76f776d3beab181fe53b
+---
+ config/packages.mk | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/config/packages.mk b/config/packages.mk
+index d620ab23..210cc4f8 100644
+--- a/config/packages.mk
++++ b/config/packages.mk
+@@ -75,7 +75,11 @@ PRODUCT_DEXPREOPT_SPEED_APPS += \
+ 
+ # Dot Packages
+ PRODUCT_PACKAGES += \
+-    Customizations \
++    Customizations
++
++ifeq ($(DOT_BUILD_TYPE),OFFICIAL)
++PRODUCT_PACKAGES += \
+     SystemUpdates
++endif
+ 
+-include vendor/dot/config/overlay.mk
+\ No newline at end of file
++include vendor/dot/config/overlay.mk
+-- 
+2.30.1
+
+
+From 9d7e1f3ec6794c83178904a3d4fe642713f583b7 Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Mon, 15 Feb 2021 19:05:46 +0800
+Subject: [PATCH 5/5] dnm
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: I75e5175e48145499f677c956bc2d3e287fd595cf
+---
+ config/common.mk | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/config/common.mk b/config/common.mk
+index 807f6b34..ec6219cc 100644
+--- a/config/common.mk
++++ b/config/common.mk
+@@ -102,6 +102,8 @@ DEVICE_PACKAGE_OVERLAYS += vendor/dot/overlay/common
+ #Telephony
+ $(call inherit-product, vendor/dot/config/telephony.mk)
+ 
++-include vendor/kud/config/common.mk
++
+ # Packages
+ include vendor/dot/config/packages.mk
+ 
 -- 
 2.30.1
 
