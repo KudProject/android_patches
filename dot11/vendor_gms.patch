@@ -1,0 +1,29 @@
+From 96e70c936ad9797bb1f5787daa52dd65f4bcb501 Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Tue, 9 Mar 2021 03:59:28 +0800
+Subject: [PATCH] prebuilt: Don't override Gallery2
+
+* Personally I still prefer to use AOSP Gallery for everything else
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: Id5d38b9e5f1afe7475c3854b446eb45fad56b1fa
+---
+ common/Android.bp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/common/Android.bp b/common/Android.bp
+index 81e8dde..133f12f 100644
+--- a/common/Android.bp
++++ b/common/Android.bp
+@@ -169,7 +169,7 @@ android_app_import {
+ 
+ android_app_import {
+ 	name: "Photos",
+-	overrides: ["Gallery2", "PhotoTable", "SnapdragonGallery"],
++	overrides: ["PhotoTable", "SnapdragonGallery"],
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/Photos/Photos.apk",
+ 	presigned: true,
+-- 
+2.30.1
+
