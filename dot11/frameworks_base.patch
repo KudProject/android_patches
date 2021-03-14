@@ -1,7 +1,7 @@
-From 94732c8831a8503f90996a786e598c6255a2ce99 Mon Sep 17 00:00:00 2001
+From 2b50d06e7d24262cf101628dd594e5789c4fdb1c Mon Sep 17 00:00:00 2001
 From: Han Wang <416810799@qq.com>
 Date: Wed, 17 Feb 2021 06:17:04 +0100
-Subject: [PATCH] Install seccomp filter even if selinux is permissive
+Subject: [PATCH 1/3] Install seccomp filter even if selinux is permissive
 
  * If selinux is permissive, Google decide to disable seccomp
    filter because debug tools like strace needs both them to be
@@ -70,5 +70,233 @@ index 9eede83e21e..be00f6383e5 100644
  
    /*
 -- 
-2.30.1
+2.30.2
+
+
+From 7cf56cd7425d13051490ebacc498da984c849b86 Mon Sep 17 00:00:00 2001
+From: Chris Crump <chris@cypheros.co>
+Date: Sat, 5 Oct 2019 00:13:58 -0400
+Subject: [PATCH 2/3] SystemUI: Update keyguard indication margin when fod is
+ in use
+
+Decrease the bottom margin when fingerprint in display is active
+to avoid obstructing the view
+
+Change-Id: I3f84384b0ea6369d7ba2f16f53c415f5285decea
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ .../res/layout/keyguard_bottom_area.xml       |  1 -
+ packages/SystemUI/res/values/dot_dimens.xml   |  3 ++
+ .../phone/KeyguardBottomAreaView.java         | 46 +++++++++++++++----
+ 3 files changed, 40 insertions(+), 10 deletions(-)
+
+diff --git a/packages/SystemUI/res/layout/keyguard_bottom_area.xml b/packages/SystemUI/res/layout/keyguard_bottom_area.xml
+index 6df2023bcbd..dfbbf72552a 100644
+--- a/packages/SystemUI/res/layout/keyguard_bottom_area.xml
++++ b/packages/SystemUI/res/layout/keyguard_bottom_area.xml
+@@ -29,7 +29,6 @@
+         android:forceHasOverlappingRendering="false"
+         android:layout_width="match_parent"
+         android:layout_height="wrap_content"
+-        android:layout_marginBottom="@dimen/keyguard_indication_margin_bottom"
+         android:layout_gravity="bottom|center_horizontal"
+         android:orientation="vertical">
+ 
+diff --git a/packages/SystemUI/res/values/dot_dimens.xml b/packages/SystemUI/res/values/dot_dimens.xml
+index 5dc937a3669..da361bfa24f 100644
+--- a/packages/SystemUI/res/values/dot_dimens.xml
++++ b/packages/SystemUI/res/values/dot_dimens.xml
+@@ -45,4 +45,7 @@
+     <dimen name="dismiss_all_fab_src_size">24dp</dimen>
+ 
+     <dimen name="dot_quick_container_spacing">-16dp</dimen>
++
++    <!-- Bottom margin size when fingerprint in display is active -->
++    <dimen name="keyguard_indication_margin_bottom_fingerprint_in_display">@dimen/keyguard_indication_margin_bottom</dimen>
+ </resources>
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/KeyguardBottomAreaView.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/KeyguardBottomAreaView.java
+index b47c59acb82..cbab4c6ba6b 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/KeyguardBottomAreaView.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/KeyguardBottomAreaView.java
+@@ -40,6 +40,7 @@ import android.content.pm.PackageManager;
+ import android.content.pm.ResolveInfo;
+ import android.content.res.Configuration;
+ import android.graphics.drawable.Drawable;
++import android.hardware.biometrics.BiometricSourceType;
+ import android.os.AsyncTask;
+ import android.os.Bundle;
+ import android.os.IBinder;
+@@ -63,6 +64,7 @@ import android.widget.FrameLayout;
+ import android.widget.TextView;
+ 
+ import com.android.internal.annotations.VisibleForTesting;
++import com.android.internal.util.custom.Utils;
+ import com.android.internal.widget.LockPatternUtils;
+ import com.android.keyguard.KeyguardUpdateMonitor;
+ import com.android.keyguard.KeyguardUpdateMonitorCallback;
+@@ -143,6 +145,7 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
+ 
+     private boolean mUserSetupComplete;
+     private boolean mPrewarmBound;
++    private boolean mIsFingerprintRunning;
+     private Messenger mPrewarmMessenger;
+     private final ServiceConnection mPrewarmConnection = new ServiceConnection() {
+ 
+@@ -168,6 +171,7 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
+     private String mLeftButtonStr;
+     private boolean mDozing;
+     private int mIndicationBottomMargin;
++    private int mIndicationBottomMarginFod;
+     private float mDarkAmount;
+     private int mBurnInXOffset;
+     private int mBurnInYOffset;
+@@ -244,6 +248,8 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
+         mIndicationText = findViewById(R.id.keyguard_indication_text);
+         mIndicationBottomMargin = getResources().getDimensionPixelSize(
+                 R.dimen.keyguard_indication_margin_bottom);
++        mIndicationBottomMarginFod = getResources().getDimensionPixelSize(
++                R.dimen.keyguard_indication_margin_bottom_fingerprint_in_display);
+         mBurnInYOffset = getResources().getDimensionPixelSize(
+                 R.dimen.default_burn_in_prevention_offset);
+         updateCameraVisibility();
+@@ -260,6 +266,7 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
+         mAccessibilityController = Dependency.get(AccessibilityController.class);
+         mActivityIntentHelper = new ActivityIntentHelper(getContext());
+         updateLeftAffordance();
++        updateIndicationAreaPadding();
+     }
+ 
+     @Override
+@@ -307,15 +314,9 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
+     @Override
+     protected void onConfigurationChanged(Configuration newConfig) {
+         super.onConfigurationChanged(newConfig);
+-        mIndicationBottomMargin = getResources().getDimensionPixelSize(
+-                R.dimen.keyguard_indication_margin_bottom);
+-        mBurnInYOffset = getResources().getDimensionPixelSize(
+-                R.dimen.default_burn_in_prevention_offset);
+-        MarginLayoutParams mlp = (MarginLayoutParams) mIndicationArea.getLayoutParams();
+-        if (mlp.bottomMargin != mIndicationBottomMargin) {
+-            mlp.bottomMargin = mIndicationBottomMargin;
+-            mIndicationArea.setLayoutParams(mlp);
+-        }
++
++        // Update the bottom margin of the indication area
++        updateIndicationAreaPadding();
+ 
+         // Respect font size setting.
+         mEnterpriseDisclosure.setTextSize(TypedValue.COMPLEX_UNIT_PX,
+@@ -385,6 +386,23 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
+                 && mRightButton.getIcon().isVisible ? View.VISIBLE : View.GONE);
+     }
+ 
++    private void updateIndicationAreaPadding() {
++        mIndicationBottomMargin = getResources().getDimensionPixelSize(
++                R.dimen.keyguard_indication_margin_bottom);
++        mIndicationBottomMarginFod = getResources().getDimensionPixelSize(
++                R.dimen.keyguard_indication_margin_bottom_fingerprint_in_display);
++        mBurnInYOffset = getResources().getDimensionPixelSize(
++                R.dimen.default_burn_in_prevention_offset);
++        MarginLayoutParams mlp = (MarginLayoutParams) mIndicationArea.getLayoutParams();
++
++        int bottomMargin = hasInDisplayFingerprint() ? mIndicationBottomMarginFod : mIndicationBottomMargin;
++        boolean newLp = mlp.bottomMargin != bottomMargin;
++        if (newLp) {
++            mlp.bottomMargin = bottomMargin;
++            mIndicationArea.setLayoutParams(mlp);
++        }
++    }
++
+     /**
+      * Set an alternate icon for the left assist affordance (replace the mic icon)
+      */
+@@ -407,6 +425,10 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
+         mLeftAffordanceView.setContentDescription(state.contentDescription);
+     }
+ 
++    private boolean hasInDisplayFingerprint() {
++        return Utils.hasFodSupport(mContext) && mIsFingerprintRunning;
++    }
++
+     public boolean isLeftVoiceAssist() {
+         return mLeftIsVoiceAssist;
+     }
+@@ -716,6 +738,12 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
+                     updateCameraVisibility();
+                     updateLeftAffordance();
+                 }
++                @Override
++                public void onBiometricRunningStateChanged(boolean running,
++                            BiometricSourceType biometricSourceType) {
++                    mIsFingerprintRunning = running;
++                    updateIndicationAreaPadding();
++                }
+             };
+ 
+     public void updateLeftAffordance() {
+-- 
+2.30.2
+
+
+From de824d67f569427c6f94c915ca28d619c372a63e Mon Sep 17 00:00:00 2001
+From: Dil3mm4 <dil3mm4.dev@gmail.com>
+Date: Mon, 30 Nov 2020 04:31:41 +0000
+Subject: [PATCH 3/3] SystemUI: Don't show FOD icon/pad keyguard if strong auth
+ is required
+
+Change-Id: Ie227aee88fea4945a7618fe606c1094ae812ebe0
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ .../android/keyguard/KeyguardSecurityContainer.java    |  7 ++++---
+ .../com/android/systemui/biometrics/FODCircleView.java | 10 ++++++++++
+ 2 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/keyguard/KeyguardSecurityContainer.java b/packages/SystemUI/src/com/android/keyguard/KeyguardSecurityContainer.java
+index 4a72c4eceff..b2283e54bf9 100644
+--- a/packages/SystemUI/src/com/android/keyguard/KeyguardSecurityContainer.java
++++ b/packages/SystemUI/src/com/android/keyguard/KeyguardSecurityContainer.java
+@@ -525,9 +525,10 @@ public class KeyguardSecurityContainer extends FrameLayout implements KeyguardSe
+ 
+         // Consume bottom insets because we're setting the padding locally (for IME and navbar.)
+         int inset;
+-        int minBottomMargin = mHasFod && mUpdateMonitor.isFingerprintDetectionRunning() ?
+-                getResources().getDimensionPixelSize(
+-                        R.dimen.kg_security_container_min_bottom_margin) : 0;
++        int minBottomMargin = mHasFod && !mUpdateMonitor.userNeedsStrongAuth() &&
++                mUpdateMonitor.isFingerprintDetectionRunning() ?
++                        getResources().getDimensionPixelSize(
++                                R.dimen.kg_security_container_min_bottom_margin) : 0;
+ 
+         if (sNewInsetsMode == NEW_INSETS_MODE_FULL) {
+             int bottomInset = insets.getInsetsIgnoringVisibility(systemBars()).bottom;
+diff --git a/packages/SystemUI/src/com/android/systemui/biometrics/FODCircleView.java b/packages/SystemUI/src/com/android/systemui/biometrics/FODCircleView.java
+index b8d19392c14..00af5d6c4d2 100644
+--- a/packages/SystemUI/src/com/android/systemui/biometrics/FODCircleView.java
++++ b/packages/SystemUI/src/com/android/systemui/biometrics/FODCircleView.java
+@@ -155,6 +155,11 @@ public class FODCircleView extends ImageView implements TunerService.Tunable {
+             new IFingerprintInscreenCallback.Stub() {
+         @Override
+         public void onFingerDown() {
++            if (mUpdateMonitor.userNeedsStrongAuth()) {
++                // Keyguard requires strong authentication (not biometrics)
++                return;
++            }
++
+             if (mFodGestureEnable && !mScreenTurnedOn) {
+                 if (mDozeEnabled) {
+                     mHandler.post(() -> mContext.sendBroadcast(new Intent(DOZE_INTENT)));
+@@ -589,6 +594,11 @@ public class FODCircleView extends ImageView implements TunerService.Tunable {
+     }
+ 
+     public void show() {
++        if (mUpdateMonitor.userNeedsStrongAuth()) {
++            // Keyguard requires strong authentication (not biometrics)
++            return;
++        }
++
+         if (!mUpdateMonitor.isScreenOn() && !mFodGestureEnable) {
+             // Keyguard is shown just after screen turning off
+             return;
+-- 
+2.30.2
 
