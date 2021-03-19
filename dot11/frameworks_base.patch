@@ -1,7 +1,49 @@
-From 2b50d06e7d24262cf101628dd594e5789c4fdb1c Mon Sep 17 00:00:00 2001
+From ebe1369c1709e70dbbaddc86c81103005fde7464 Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Sat, 20 Mar 2021 05:20:39 +0800
+Subject: [PATCH 1/4] Revert "Merge "Revert "Fix merge error and reallow
+ adotable and sd storage visibility"" into dot11"
+
+This reverts commit d11403bab37a62e2572a3fccba4bd5dfede5f769, reversing
+changes made to af9314f33b1d6c99843c987170e18e7f9ef251e2.
+
+More derps. Reee
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: Ia87ee1e8cd31635575414cd872d425b9f6479a65
+---
+ .../java/com/android/server/StorageManagerService.java | 10 +++-------
+ 1 file changed, 3 insertions(+), 7 deletions(-)
+
+diff --git a/services/core/java/com/android/server/StorageManagerService.java b/services/core/java/com/android/server/StorageManagerService.java
+index 2e438dfbda8..8ac6886a36b 100644
+--- a/services/core/java/com/android/server/StorageManagerService.java
++++ b/services/core/java/com/android/server/StorageManagerService.java
+@@ -1523,13 +1523,9 @@ class StorageManagerService extends IStorageManager.Stub
+                 vol.mountFlags |= VolumeInfo.MOUNT_FLAG_VISIBLE;
+             }
+ 
+-            // Set sdcards to visible to apps. If they are visible media is scanned
+-            // and they can be used for other stuff.
+-            if (vol.disk.isSd()) {
+-                vol.mountFlags |= VolumeInfo.MOUNT_FLAG_VISIBLE;
+-            } else if (vol.disk.isSd()) {
+-                vol.mountFlags |= VolumeInfo.MOUNT_FLAG_VISIBLE;
+-            } else if (vol.disk.isSd()) {
++            // Adoptable public disks are visible to apps, since they meet
++            // public API requirement of being in a stable location.
++            if (vol.disk.isAdoptable()) {
+                 vol.mountFlags |= VolumeInfo.MOUNT_FLAG_VISIBLE;
+             } else if (vol.disk.isSd()) {
+                 vol.mountFlags |= VolumeInfo.MOUNT_FLAG_VISIBLE;
+-- 
+2.30.2
+
+
+From 5020be0668fe30e565e3d9c94076562815b67c3d Mon Sep 17 00:00:00 2001
 From: Han Wang <416810799@qq.com>
 Date: Wed, 17 Feb 2021 06:17:04 +0100
-Subject: [PATCH 1/3] Install seccomp filter even if selinux is permissive
+Subject: [PATCH 2/4] Install seccomp filter even if selinux is permissive
 
  * If selinux is permissive, Google decide to disable seccomp
    filter because debug tools like strace needs both them to be
@@ -73,10 +115,10 @@ index 9eede83e21e..be00f6383e5 100644
 2.30.2
 
 
-From 7cf56cd7425d13051490ebacc498da984c849b86 Mon Sep 17 00:00:00 2001
+From a8beb68faaba5704a7f78f7fef7cfc47a9f211d7 Mon Sep 17 00:00:00 2001
 From: Chris Crump <chris@cypheros.co>
 Date: Sat, 5 Oct 2019 00:13:58 -0400
-Subject: [PATCH 2/3] SystemUI: Update keyguard indication margin when fod is
+Subject: [PATCH 3/4] SystemUI: Update keyguard indication margin when fod is
  in use
 
 Decrease the bottom margin when fingerprint in display is active
@@ -238,10 +280,10 @@ index b47c59acb82..cbab4c6ba6b 100644
 2.30.2
 
 
-From de824d67f569427c6f94c915ca28d619c372a63e Mon Sep 17 00:00:00 2001
+From 77f4a01de580c4bf68e594f4323e21103b619cb1 Mon Sep 17 00:00:00 2001
 From: Dil3mm4 <dil3mm4.dev@gmail.com>
 Date: Mon, 30 Nov 2020 04:31:41 +0000
-Subject: [PATCH 3/3] SystemUI: Don't show FOD icon/pad keyguard if strong auth
+Subject: [PATCH 4/4] SystemUI: Don't show FOD icon/pad keyguard if strong auth
  is required
 
 Change-Id: Ie227aee88fea4945a7618fe606c1094ae812ebe0
