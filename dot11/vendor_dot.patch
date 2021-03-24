@@ -1,4 +1,4 @@
-From 16b9e5fd5cdf4d2dac0b137b0a3aea4b2aa0abcd Mon Sep 17 00:00:00 2001
+From 609ec14b21d200e14f0a4046496ae449361c31e3 Mon Sep 17 00:00:00 2001
 From: Danny Lin <danny@kdrag0n.dev>
 Date: Sun, 13 Dec 2020 18:48:48 -0800
 Subject: [PATCH 1/4] wifi: Increase 5 GHz network signal tolerance
@@ -58,10 +58,10 @@ index 00000000..746f8cea
 +    <integer translatable="false" name="config_wifi_framework_wifi_score_entry_rssi_threshold_5GHz">-85</integer>
 +</resources>
 -- 
-2.30.1
+2.31.0
 
 
-From 11ce495d9ef1f004d8c9dcad47dedf7c7e254c32 Mon Sep 17 00:00:00 2001
+From 2ee4e10791af54cc770a75a30ebaa751c4c364c2 Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Wed, 17 Feb 2021 01:12:21 +0800
 Subject: [PATCH 2/4] packages: Omit SystemUpdates for unofficial builds
@@ -92,18 +92,23 @@ index d620ab23..210cc4f8 100644
 \ No newline at end of file
 +include vendor/dot/config/overlay.mk
 -- 
-2.30.1
+2.31.0
 
 
-From 82b6ca8a85e90d1d491aa99ab98fe508ae6be300 Mon Sep 17 00:00:00 2001
+From d35fbf2120fc0e4def9f48b839251231078a8e85 Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
-Date: Tue, 9 Mar 2021 21:51:30 +0800
-Subject: [PATCH 3/4] BoardConfigQcom: Allow targets to upgrade to UM 4.19
- family
+Date: Wed, 24 Mar 2021 16:18:17 +0800
+Subject: [PATCH 3/4] BoardConfigQcom: Allow target to override as a QSSI
+ supported platform
 
-Certain sdm660 devices have both received 4.19 kernel port as well as support
-for compiling against msm-4.19 HALs. Allow such targets to opt in for being
-included as a QSSI supported target.
+With 4.19 kernel upgrade, SDM660 platform switched to use external display-intf
+repository for display headers while retaining most of backward compatibility
+with older kernels.
+
+In order to anticipate more platforms, especially msm8937 and msm8953, when 4.19
+kernel support is fully baked, introduce `TARGET_OVERRIDE_QSSI_SUPPORTED_PLATFORM'
+board flag to allow devices that receive 4.19 kernel upgrade with compatible HALs
+to opt into using display-intf headers.
 
 Signed-off-by: Albert I <kras@raphielgang.org>
 Change-Id: Ibcc161641392930d554d78058a6154637c537a34
@@ -112,14 +117,14 @@ Change-Id: Ibcc161641392930d554d78058a6154637c537a34
  1 file changed, 4 insertions(+)
 
 diff --git a/config/BoardConfigQcom.mk b/config/BoardConfigQcom.mk
-index 630066ed..dd8c23a4 100644
+index 630066ed..da7eb2b9 100644
 --- a/config/BoardConfigQcom.mk
 +++ b/config/BoardConfigQcom.mk
 @@ -18,6 +18,10 @@ UM_4_19_FAMILY := $(KONA) $(LITO) $(BENGAL)
  UM_PLATFORMS := $(UM_3_18_FAMILY) $(UM_4_4_FAMILY) $(UM_4_9_FAMILY) $(UM_4_14_FAMILY) $(UM_4_19_FAMILY)
  QSSI_SUPPORTED_PLATFORMS := $(UM_4_9_FAMILY) $(UM_4_14_FAMILY) $(UM_4_19_FAMILY)
  
-+ifeq ($(TARGET_USES_UM_4_19),true)
++ifeq ($(TARGET_OVERRIDE_QSSI_SUPPORTED_PLATFORM),true)
 +    QSSI_SUPPORTED_PLATFORMS += $(TARGET_BOARD_PLATFORM)
 +endif
 +
@@ -127,10 +132,10 @@ index 630066ed..dd8c23a4 100644
  
  # UM platforms no longer need this set on O+
 -- 
-2.30.1
+2.31.0
 
 
-From c88eedac4ac5395a64f79a50db3ea129268f0721 Mon Sep 17 00:00:00 2001
+From 9e853158a45f41bbca4325ace6730cabd1490664 Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Mon, 15 Feb 2021 19:05:46 +0800
 Subject: [PATCH 4/4] dnm: Inherit KudProject private configuration
@@ -155,5 +160,5 @@ index 1ffea8eb..f4381d69 100644
  include vendor/dot/config/packages.mk
  
 -- 
-2.30.1
+2.31.0
 
