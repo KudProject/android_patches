@@ -1,7 +1,7 @@
-From 96e70c936ad9797bb1f5787daa52dd65f4bcb501 Mon Sep 17 00:00:00 2001
+From 92ce721dea6b6fe08e62f6348a70f2fb4aa4ea2f Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Tue, 9 Mar 2021 03:59:28 +0800
-Subject: [PATCH] prebuilt: Don't override Gallery2
+Subject: [PATCH 1/2] prebuilt: Don't override Gallery2
 
 * Personally I still prefer to use AOSP Gallery for everything else
 
@@ -12,7 +12,7 @@ Change-Id: Id5d38b9e5f1afe7475c3854b446eb45fad56b1fa
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/common/Android.bp b/common/Android.bp
-index 81e8dde..133f12f 100644
+index cf280b3..92c23f8 100644
 --- a/common/Android.bp
 +++ b/common/Android.bp
 @@ -169,7 +169,7 @@ android_app_import {
@@ -25,5 +25,37 @@ index 81e8dde..133f12f 100644
  	apk: "proprietary/product/app/Photos/Photos.apk",
  	presigned: true,
 -- 
-2.30.1
+2.31.0
+
+
+From ec09da24e75a6c701c5b7a76dd3f2403a74c7e5a Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Tue, 30 Mar 2021 17:31:13 +0800
+Subject: [PATCH 2/2] GmsConfigOverlay: Don't override
+ config_defaultAssistantAccessComponent
+
+* com.google.android.ext.services is an Apex module
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: Ic7e4e65ec77a62fa6e5e3a11a6dba40e5c834e48
+---
+ overlay/GmsConfigOverlay/res/values/config.xml | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/overlay/GmsConfigOverlay/res/values/config.xml b/overlay/GmsConfigOverlay/res/values/config.xml
+index 4dfac29..3020741 100644
+--- a/overlay/GmsConfigOverlay/res/values/config.xml
++++ b/overlay/GmsConfigOverlay/res/values/config.xml
+@@ -196,9 +196,6 @@
+     <!-- The name of the package that will hold the assistant role by default. -->
+     <string name="config_defaultAssistant" translatable="false">com.google.android.googlequicksearchbox</string>
+ 
+-    <!-- Component name that should be granted Notification Assistant access -->
+-    <string name="config_defaultAssistantAccessComponent" translatable="false">com.google.android.ext.services/android.ext.services.notification.Assistant</string>
+-
+     <!-- The name of the package that will hold the dialer role by default. -->
+     <string name="config_defaultDialer" translatable="false">com.google.android.dialer</string>
+ 
+-- 
+2.31.0
 

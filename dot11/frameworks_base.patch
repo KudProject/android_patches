@@ -1,36 +1,37 @@
-From 544ac24bbd66812c9a446f0350fbcf56f2bb74dd Mon Sep 17 00:00:00 2001
-From: Ethan Halsall <ethan.halsall@gmail.com>
-Date: Tue, 3 Nov 2020 18:55:18 +0000
-Subject: [PATCH 1/5] fwb: revert all key light changes as it breaks hwc
- brightness
+From aed362d0fdf59c7411b28df6bbca687a7bdc7625 Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Tue, 30 Mar 2021 00:44:07 +0800
+Subject: [PATCH 1/5] fw/b: Revert button backlight changes
 
-Revert "PowerManager: Allow to distinguish different keypresses"
+(Still) causing a race with hwcomposer brightness control...
 
-This reverts commit b47a29cd4e95ccb3cb80e2e42d32734831eb8e45.
+* Revert "PowerManagerService: Add nullptr checks around button/keyboard lights"
+  This reverts commit c2de9a6a65512b25581c07ba92fa8e6bde572387.
 
-Revert "PowerManagerService: Allow to light up buttons only when pressed"
+* Revert "PowerManager: Allow to distinguish different keypresses"
+  This reverts commit b47a29cd4e95ccb3cb80e2e42d32734831eb8e45.
 
-This reverts commit c53ad66282fa12fec4a8cd5ee95e44088049b891.
+* Revert "PowerManagerService: Allow to light up buttons only when pressed"
+  This reverts commit c53ad66282fa12fec4a8cd5ee95e44088049b891.
 
-Revert "fw/b: Button backlight brightness"
-
-This reverts commit c3ecbbab2e1e8d717b9529fb34d3d4f62a268e86.
+* Revert "fw/b: Button backlight brightness"
+  This reverts commit c3ecbbab2e1e8d717b9529fb34d3d4f62a268e86.
 
 Signed-off-by: Albert I <kras@raphielgang.org>
-Change-Id: I0dea5fb06409d07903e61567fe76d772777f4425
+Change-Id: If8a455bc56f4756c017df4d0e1af0da664a67ed6
 ---
  core/java/android/os/PowerManager.java        |  18 +--
  .../java/android/os/PowerManagerInternal.java |  10 --
  core/java/android/provider/Settings.java      |  25 ----
  core/res/res/values/dot_config.xml            |   4 -
  core/res/res/values/dot_symbols.xml           |   4 -
- .../display/DisplayPowerController.java       |  12 --
- .../server/power/PowerManagerService.java     | 122 ------------------
+ .../display/DisplayPowerController.java       |  18 ---
+ .../server/power/PowerManagerService.java     | 135 ------------------
  .../server/wm/RootWindowContainer.java        |  25 +---
  ...droid_server_input_InputManagerService.cpp |   6 +-
  ...droid_server_power_PowerManagerService.cpp |  11 +-
  ...android_server_power_PowerManagerService.h |   3 +-
- 11 files changed, 10 insertions(+), 230 deletions(-)
+ 11 files changed, 10 insertions(+), 249 deletions(-)
 
 diff --git a/core/java/android/os/PowerManager.java b/core/java/android/os/PowerManager.java
 index ee51eabbcd0..3ffeeb9ee01 100644
@@ -97,7 +98,7 @@ index 1c1443d9088..b1a02ac9527 100644
       * Used by the window manager to override the user activity timeout based on the
       * current foreground activity.  It can only be used to make the timeout shorter
 diff --git a/core/java/android/provider/Settings.java b/core/java/android/provider/Settings.java
-index 5bd5c1b0651..32fc80e0162 100644
+index 09189e34cc9..669d4c4f3a0 100644
 --- a/core/java/android/provider/Settings.java
 +++ b/core/java/android/provider/Settings.java
 @@ -4788,28 +4788,6 @@ public final class Settings {
@@ -129,7 +130,7 @@ index 5bd5c1b0651..32fc80e0162 100644
          /**
           * Whether or not to enable multiple audio focus.
           * When enabled, requires more management by user over application playback activity,
-@@ -5275,9 +5253,6 @@ public final class Settings {
+@@ -5281,9 +5259,6 @@ public final class Settings {
              PRIVATE_SETTINGS.add(STATUSBAR_CLOCK_DATE_FORMAT);
              PRIVATE_SETTINGS.add(STATUSBAR_CLOCK_DATE_POSITION);
              PRIVATE_SETTINGS.add(LOCKSCREEN_PIN_SCRAMBLE_LAYOUT);
@@ -166,18 +167,19 @@ index 51042698e34..9a0c17d4cea 100644
 -   <java-symbol type="bool" name="config_deviceHasVariableButtonBrightness" />
  </resources>
 diff --git a/services/core/java/com/android/server/display/DisplayPowerController.java b/services/core/java/com/android/server/display/DisplayPowerController.java
-index f0d626febff..1051b2987da 100644
+index 1696058512b..1051b2987da 100644
 --- a/services/core/java/com/android/server/display/DisplayPowerController.java
 +++ b/services/core/java/com/android/server/display/DisplayPowerController.java
-@@ -61,7 +61,6 @@ import com.android.server.am.BatteryStatsService;
+@@ -61,8 +61,6 @@ import com.android.server.am.BatteryStatsService;
  import com.android.server.display.whitebalance.DisplayWhiteBalanceController;
  import com.android.server.display.whitebalance.DisplayWhiteBalanceFactory;
  import com.android.server.display.whitebalance.DisplayWhiteBalanceSettings;
 -import com.android.server.lights.LightsManager;
+-import com.android.server.lights.LogicalLight;
  import com.android.server.policy.WindowManagerPolicy;
  
  import java.io.PrintWriter;
-@@ -157,9 +156,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
+@@ -158,9 +156,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
      // Battery stats.
      private final IBatteryStats mBatteryStats;
  
@@ -187,7 +189,7 @@ index f0d626febff..1051b2987da 100644
      // The sensor manager.
      private final SensorManager mSensorManager;
  
-@@ -418,7 +414,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
+@@ -419,7 +414,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
          mSettingsObserver = new SettingsObserver(mHandler);
          mCallbacks = callbacks;
          mBatteryStats = BatteryStatsService.getService();
@@ -195,22 +197,27 @@ index f0d626febff..1051b2987da 100644
          mSensorManager = sensorManager;
          mWindowManagerPolicy = LocalServices.getService(WindowManagerPolicy.class);
          mBlanker = blanker;
-@@ -890,13 +885,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
+@@ -891,18 +885,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
          if (state == Display.STATE_OFF) {
              brightnessState = PowerManager.BRIGHTNESS_OFF_FLOAT;
              mBrightnessReasonTemp.setReason(BrightnessReason.REASON_SCREEN_OFF);
--            mLights.getLight(LightsManager.LIGHT_ID_BUTTONS).setBrightness(brightnessState);
+-            LogicalLight buttonsLight = mLights.getLight(LightsManager.LIGHT_ID_BUTTONS);
+-            if (buttonsLight != null) {
+-                buttonsLight.setBrightness(brightnessState);
+-            }
 -        }
 -
 -        // Disable button lights when dozing
 -        if (state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND) {
--            mLights.getLight(LightsManager.LIGHT_ID_BUTTONS)
--                    .setBrightness(PowerManager.BRIGHTNESS_OFF_FLOAT);
+-            LogicalLight buttonsLight = mLights.getLight(LightsManager.LIGHT_ID_BUTTONS);
+-            if (buttonsLight != null) {
+-                buttonsLight.setBrightness(PowerManager.BRIGHTNESS_OFF_FLOAT);
+-            }
          }
  
          // Always use the VR brightness when in the VR state.
 diff --git a/services/core/java/com/android/server/power/PowerManagerService.java b/services/core/java/com/android/server/power/PowerManagerService.java
-index 8700ed12796..3f5083f69e6 100644
+index 3939af9c206..3f5083f69e6 100644
 --- a/services/core/java/com/android/server/power/PowerManagerService.java
 +++ b/services/core/java/com/android/server/power/PowerManagerService.java
 @@ -240,8 +240,6 @@ public final class PowerManagerService extends SystemService
@@ -344,39 +351,50 @@ index 8700ed12796..3f5083f69e6 100644
                      mLastUserActivityTime = eventTime;
                      mDirty |= DIRTY_USER_ACTIVITY;
                      if (event == PowerManager.USER_ACTIVITY_EVENT_BUTTON) {
-@@ -2343,46 +2291,10 @@ public final class PowerManagerService extends SystemService
+@@ -2343,59 +2291,10 @@ public final class PowerManagerService extends SystemService
                              + screenOffTimeout - screenDimDuration;
                      if (now < nextTimeout) {
                          mUserActivitySummary = USER_ACTIVITY_SCREEN_BRIGHT;
 -                        if (getWakefulnessLocked() == WAKEFULNESS_AWAKE) {
--                            float buttonBrightness = PowerManager.BRIGHTNESS_OFF_FLOAT;;
--                            if (isValidButtonBrightness(mButtonBrightnessOverrideFromWindowManager)) {
--                                buttonBrightness = mButtonBrightnessOverrideFromWindowManager;
--                            } else if (isValidButtonBrightness(mButtonBrightness)) {
--                                buttonBrightness = mButtonBrightness;
--                            }
--
--                            mLastButtonActivityTime = mButtonLightOnKeypressOnly ?
--                                    mLastButtonActivityTime : mLastUserActivityTime;
--                            if (mButtonTimeout != 0 &&
--                                    now > mLastButtonActivityTime + mButtonTimeout) {
--                                mButtonsLight.setBrightness(PowerManager.BRIGHTNESS_OFF_FLOAT);
--                                mButtonOn = false;
--                            } else {
--                                if ((!mButtonLightOnKeypressOnly || mButtonPressed) &&
--                                        !mProximityPositive) {
--                                    mButtonsLight.setBrightness(buttonBrightness);
--                                    mButtonPressed = false;
--                                    if (buttonBrightness != PowerManager.BRIGHTNESS_OFF_FLOAT &&
--                                            mButtonTimeout != 0) {
--                                        mButtonOn = true;
--                                        if (now + mButtonTimeout < nextTimeout) {
--                                            nextTimeout = now + mButtonTimeout;
+-                            if (mButtonsLight != null) {
+-                                float buttonBrightness = PowerManager.BRIGHTNESS_OFF_FLOAT;
+-                                 if (isValidButtonBrightness(mButtonBrightnessOverrideFromWindowManager)) { 
+-                                    buttonBrightness = mButtonBrightnessOverrideFromWindowManager;
+-                                } else {
+-                                    if (isValidBrightness(
+-                                            mButtonBrightnessOverrideFromWindowManager)) {
+-                                        if (mButtonBrightnessOverrideFromWindowManager >
+-                                                PowerManager.BRIGHTNESS_MIN) {
+-                                            buttonBrightness =
+-                                                    mButtonBrightnessOverrideFromWindowManager;
 -                                        }
+-                                    } else if (isValidButtonBrightness(mButtonBrightness)) {
+-                                        buttonBrightness = mButtonBrightness;
 -                                    }
--                                } else if (mButtonLightOnKeypressOnly && mButtonOn &&
--                                        mLastButtonActivityTime + mButtonTimeout < nextTimeout) {
--                                    nextTimeout = mLastButtonActivityTime + mButtonTimeout;
+-                                }
+-                                mLastButtonActivityTime = mButtonLightOnKeypressOnly ?
+-                                        mLastButtonActivityTime : mLastUserActivityTime;
+-                                if (mButtonTimeout != 0 &&
+-                                        now > mLastButtonActivityTime + mButtonTimeout) {
+-                                    mButtonsLight.setBrightness(PowerManager.BRIGHTNESS_OFF_FLOAT);
+-                                    mButtonOn = false;
+-                                } else {
+-                                    if ((!mButtonLightOnKeypressOnly || mButtonPressed) &&
+-                                            !mProximityPositive) {
+-                                        mButtonsLight.setBrightness(buttonBrightness);
+-                                        mButtonPressed = false;
+-                                        if (buttonBrightness != PowerManager.BRIGHTNESS_OFF_FLOAT &&
+-                                                mButtonTimeout != 0) {
+-                                            mButtonOn = true;
+-                                            if (now + mButtonTimeout < nextTimeout) {
+-                                                nextTimeout = now + mButtonTimeout;
+-                                            }
+-                                        }
+-                                    } else if (mButtonLightOnKeypressOnly && mButtonOn &&
+-                                            mLastButtonActivityTime + mButtonTimeout <
+-                                                    nextTimeout) {
+-                                        nextTimeout = mLastButtonActivityTime + mButtonTimeout;
+-                                    }
 -                                }
 -                            }
 -                        }
@@ -385,13 +403,15 @@ index 8700ed12796..3f5083f69e6 100644
                          if (now < nextTimeout) {
                              mUserActivitySummary = USER_ACTIVITY_SCREEN_DIM;
 -                            if (getWakefulnessLocked() == WAKEFULNESS_AWAKE) {
--                                mButtonsLight.setBrightness(PowerManager.BRIGHTNESS_OFF_FLOAT);
--                                mButtonOn = false;
+-                                if (mButtonsLight != null) {
+-                                    mButtonsLight.setBrightness(PowerManager.BRIGHTNESS_OFF_FLOAT);
+-                                    mButtonOn = false;
+-                                }
 -                            }
                          }
                      }
                  }
-@@ -3017,10 +2929,6 @@ public final class PowerManagerService extends SystemService
+@@ -3030,10 +2929,6 @@ public final class PowerManagerService extends SystemService
          return value >= PowerManager.BRIGHTNESS_MIN && value <= PowerManager.BRIGHTNESS_MAX;
      }
  
@@ -402,7 +422,7 @@ index 8700ed12796..3f5083f69e6 100644
      @VisibleForTesting
      int getDesiredScreenPolicyLocked() {
          if (getWakefulnessLocked() == WAKEFULNESS_ASLEEP || sQuiescent) {
-@@ -3681,17 +3589,6 @@ public final class PowerManagerService extends SystemService
+@@ -3694,17 +3589,6 @@ public final class PowerManagerService extends SystemService
          }
      }
  
@@ -420,7 +440,7 @@ index 8700ed12796..3f5083f69e6 100644
      private void setScreenBrightnessOverrideFromWindowManagerInternal(float brightness) {
          synchronized (mLock) {
              if (!BrightnessSynchronizer.floatEquals(mScreenBrightnessOverrideFromWindowManager,
-@@ -3996,12 +3893,7 @@ public final class PowerManagerService extends SystemService
+@@ -4009,12 +3893,7 @@ public final class PowerManagerService extends SystemService
                      + mMaximumScreenOffTimeoutFromDeviceAdmin + " (enforced="
                      + isMaximumScreenOffTimeoutFromDeviceAdminEnforcedLocked() + ")");
              pw.println("  mStayOnWhilePluggedInSetting=" + mStayOnWhilePluggedInSetting);
@@ -433,7 +453,7 @@ index 8700ed12796..3f5083f69e6 100644
              pw.println("  mScreenBrightnessOverrideFromWindowManager="
                      + mScreenBrightnessOverrideFromWindowManager);
              pw.println("  mUserActivityTimeoutOverrideFromWindowManager="
-@@ -5071,8 +4963,6 @@ public final class PowerManagerService extends SystemService
+@@ -5084,8 +4963,6 @@ public final class PowerManagerService extends SystemService
                      return mScreenBrightnessMaximumVr;
                  case PowerManager.BRIGHTNESS_CONSTRAINT_TYPE_DEFAULT_VR:
                      return mScreenBrightnessDefaultVr;
@@ -442,7 +462,7 @@ index 8700ed12796..3f5083f69e6 100644
                  default:
                      return PowerManager.BRIGHTNESS_INVALID_FLOAT;
              }
-@@ -5613,18 +5503,6 @@ public final class PowerManagerService extends SystemService
+@@ -5626,18 +5503,6 @@ public final class PowerManagerService extends SystemService
              setScreenBrightnessOverrideFromWindowManagerInternal(screenBrightness);
          }
  
@@ -617,7 +637,7 @@ index 1dfd7bbca0e..a17fd650522 100644
 2.31.0
 
 
-From d1139b3aa20db772beca046ef2b4587178af773c Mon Sep 17 00:00:00 2001
+From 66daf8fc3d3e7ef95d6e76a1a706aafc59a3f701 Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Sat, 20 Mar 2021 05:20:39 +0800
 Subject: [PATCH 2/5] Revert "Merge "Revert "Fix merge error and reallow
@@ -659,7 +679,7 @@ index 2e438dfbda8..8ac6886a36b 100644
 2.31.0
 
 
-From d02acb19a7925ed458a314b5d86e7591a6f1bf96 Mon Sep 17 00:00:00 2001
+From a3a59936c41411d8ea0755a8ceac1f09f7c15eb5 Mon Sep 17 00:00:00 2001
 From: Han Wang <416810799@qq.com>
 Date: Wed, 17 Feb 2021 06:17:04 +0100
 Subject: [PATCH 3/5] Install seccomp filter even if selinux is permissive
@@ -734,7 +754,7 @@ index 9eede83e21e..be00f6383e5 100644
 2.31.0
 
 
-From 3435d4c9399e724cce90780192c4edc84528544e Mon Sep 17 00:00:00 2001
+From a7e53e9d0cf3286eaabcea1355b005ad176e8ebe Mon Sep 17 00:00:00 2001
 From: Chris Crump <chris@cypheros.co>
 Date: Sat, 5 Oct 2019 00:13:58 -0400
 Subject: [PATCH 4/5] SystemUI: Update keyguard indication margin when fod is
@@ -899,7 +919,7 @@ index b47c59acb82..cbab4c6ba6b 100644
 2.31.0
 
 
-From d2f79bfc470df96a3796cecd91189840b40c1896 Mon Sep 17 00:00:00 2001
+From 0fb1b39f59e76f52ce54da0ca8e374a6339b62bf Mon Sep 17 00:00:00 2001
 From: Dil3mm4 <dil3mm4.dev@gmail.com>
 Date: Mon, 30 Nov 2020 04:31:41 +0000
 Subject: [PATCH 5/5] SystemUI: Don't show FOD icon/pad keyguard if strong auth
