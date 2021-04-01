@@ -1,0 +1,2441 @@
+From 71bb1207e7f2ae156738bf2c7f3f90da0f1e63f6 Mon Sep 17 00:00:00 2001
+From: Taehwan Kim <t_h.kim@samsung.com>
+Date: Thu, 17 Sep 2020 12:26:40 +0900
+Subject: [PATCH 01/23] CCodec: fix underflow issue on handleImageData
+
+the logic is assumed that gralloc does assume a contiguous mapping
+at GraphicView2MediaImageConverter() in Codec2Buffer.
+if it doesn't, underflow could happen because
+type of variable is unsigned.
+
+Bug: 168757280
+
+Change-Id: I04e13d0680af74e76d96d3ab10a549f6368205cf
+Signed-off-by: Taehwan Kim <t_h.kim@samsung.com>
+(cherry picked from commit fd9b809147b78330d1db7ec17e200071e779fd46)
+---
+ media/codec2/sfplugin/CCodecBuffers.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/media/codec2/sfplugin/CCodecBuffers.cpp b/media/codec2/sfplugin/CCodecBuffers.cpp
+index bddaa9f22b..692da584ce 100644
+--- a/media/codec2/sfplugin/CCodecBuffers.cpp
++++ b/media/codec2/sfplugin/CCodecBuffers.cpp
+@@ -91,7 +91,9 @@ void CCodecBuffers::handleImageData(const sp<Codec2Buffer> &buffer) {
+             newFormat->setInt32(KEY_STRIDE, stride);
+             ALOGD("[%s] updating stride = %d", mName, stride);
+             if (img->mNumPlanes > 1 && stride > 0) {
+-                int32_t vstride = (img->mPlane[1].mOffset - img->mPlane[0].mOffset) / stride;
++                int64_t offsetDelta =
++                    (int64_t)img->mPlane[1].mOffset - (int64_t)img->mPlane[0].mOffset;
++                int32_t vstride = int32_t(offsetDelta / stride);
+                 newFormat->setInt32(KEY_SLICE_HEIGHT, vstride);
+                 ALOGD("[%s] updating vstride = %d", mName, vstride);
+             }
+-- 
+2.31.0
+
+
+From 1cb47aeb8e31ffe182f82e30eed9b9fa40d9dbef Mon Sep 17 00:00:00 2001
+From: Ray Essick <essick@google.com>
+Date: Mon, 14 Sep 2020 17:05:07 -0700
+Subject: [PATCH 02/23] OMX Opus decoder omits sample rate / channel count
+
+The OMX Opus decoder doesn't signal back the channel/samplerate info to
+the framework, leading to a CTS failure when checking required values.
+
+Based on an AOSP patch provided by denis.hsu@mediatek.com
+
+Bug: 166695414
+Test: CtsMediaTestCases android.media.cts.DecoderTest#testDecodeOpusChannelsAndRates
+Change-Id: If710405caea4be6336b4aec3aa0c051ad3c0fe95
+(cherry picked from commit 74d4b70841b2aa3154b10b82ebcc6737d1d36a6d)
+---
+ media/libstagefright/ACodec.cpp               | 26 +++++++++++++++++++
+ .../codecs/opus/dec/SoftOpus.cpp              | 11 +++++---
+ .../libstagefright/codecs/opus/dec/SoftOpus.h |  2 ++
+ .../include/media/stagefright/ACodec.h        |  1 +
+ 4 files changed, 37 insertions(+), 3 deletions(-)
+
+diff --git a/media/libstagefright/ACodec.cpp b/media/libstagefright/ACodec.cpp
+index 87542099c4..5b008a7309 100644
+--- a/media/libstagefright/ACodec.cpp
++++ b/media/libstagefright/ACodec.cpp
+@@ -2237,6 +2237,12 @@ status_t ACodec::configureCodec(
+             }
+             err = setupG711Codec(encoder, sampleRate, numChannels);
+         }
++    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_OPUS)) {
++        int32_t numChannels = 1, sampleRate = 48000;
++        if (msg->findInt32("channel-count", &numChannels) &&
++            msg->findInt32("sample-rate", &sampleRate)) {
++            err = setupOpusCodec(encoder, sampleRate, numChannels);
++        }
+     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC)) {
+         // numChannels needs to be set to properly communicate PCM values.
+         int32_t numChannels = 2, sampleRate = 44100, compressionLevel = -1;
+@@ -3110,6 +3116,26 @@ status_t ACodec::setupG711Codec(bool encoder, int32_t sampleRate, int32_t numCha
+             kPortIndexInput, sampleRate, numChannels);
+ }
+ 
++status_t ACodec::setupOpusCodec(bool encoder, int32_t sampleRate, int32_t numChannels) {
++    if (encoder) {
++        return INVALID_OPERATION;
++    }
++    OMX_AUDIO_PARAM_ANDROID_OPUSTYPE def;
++    InitOMXParams(&def);
++    def.nPortIndex = kPortIndexInput;
++    status_t err = mOMXNode->getParameter(
++            (OMX_INDEXTYPE)OMX_IndexParamAudioAndroidOpus, &def, sizeof(def));
++    if (err != OK) {
++        ALOGE("setupOpusCodec(): Error %d getting OMX_IndexParamAudioAndroidOpus parameter", err);
++        return err;
++    }
++    def.nSampleRate = sampleRate;
++    def.nChannels = numChannels;
++    err = mOMXNode->setParameter(
++           (OMX_INDEXTYPE)OMX_IndexParamAudioAndroidOpus, &def, sizeof(def));
++    return err;
++}
++
+ status_t ACodec::setupFlacCodec(
+         bool encoder, int32_t numChannels, int32_t sampleRate, int32_t compressionLevel,
+         AudioEncoding encoding) {
+diff --git a/media/libstagefright/codecs/opus/dec/SoftOpus.cpp b/media/libstagefright/codecs/opus/dec/SoftOpus.cpp
+index 4f61aa8be2..5bb1879da1 100644
+--- a/media/libstagefright/codecs/opus/dec/SoftOpus.cpp
++++ b/media/libstagefright/codecs/opus/dec/SoftOpus.cpp
+@@ -58,6 +58,8 @@ SoftOpus::SoftOpus(
+       mInputBufferCount(0),
+       mDecoder(NULL),
+       mHeader(NULL),
++      mNumChannels(1),
++      mSamplingRate(kRate),
+       mCodecDelay(0),
+       mSeekPreRoll(0),
+       mAnchorTimeUs(0),
+@@ -169,11 +171,11 @@ OMX_ERRORTYPE SoftOpus::internalGetParameter(
+             }
+ 
+             opusParams->nAudioBandWidth = 0;
+-            opusParams->nSampleRate = kRate;
++            opusParams->nSampleRate = mSamplingRate;
+             opusParams->nBitRate = 0;
+ 
+             if (!isConfigured()) {
+-                opusParams->nChannels = 1;
++                opusParams->nChannels = mNumChannels;
+             } else {
+                 opusParams->nChannels = mHeader->channels;
+             }
+@@ -274,7 +276,8 @@ OMX_ERRORTYPE SoftOpus::internalSetParameter(
+             if (opusParams->nPortIndex != 0) {
+                 return OMX_ErrorUndefined;
+             }
+-
++            mNumChannels = opusParams->nChannels;
++            mSamplingRate = opusParams->nSampleRate;
+             return OMX_ErrorNone;
+         }
+ 
+@@ -496,6 +499,8 @@ void SoftOpus::onQueueFilled(OMX_U32 /* portIndex */) {
+                                    *(reinterpret_cast<int64_t*>(inHeader->pBuffer +
+                                                                 inHeader->nOffset)),
+                                    kRate);
++                mSamplingRate = kRate;
++                mNumChannels = mHeader->channels;
+                 notify(OMX_EventPortSettingsChanged, 1, 0, NULL);
+                 mOutputPortSettingsChange = AWAITING_DISABLED;
+             }
+diff --git a/media/libstagefright/codecs/opus/dec/SoftOpus.h b/media/libstagefright/codecs/opus/dec/SoftOpus.h
+index 91cafa14c7..00058c8212 100644
+--- a/media/libstagefright/codecs/opus/dec/SoftOpus.h
++++ b/media/libstagefright/codecs/opus/dec/SoftOpus.h
+@@ -70,6 +70,8 @@ private:
+     OpusMSDecoder *mDecoder;
+     OpusHeader *mHeader;
+ 
++    int32_t mNumChannels;
++    int32_t mSamplingRate;
+     int64_t mCodecDelay;
+     int64_t mSeekPreRoll;
+     int64_t mSamplesToDiscard;
+diff --git a/media/libstagefright/include/media/stagefright/ACodec.h b/media/libstagefright/include/media/stagefright/ACodec.h
+index 83e92b9f43..105e7f7f98 100644
+--- a/media/libstagefright/include/media/stagefright/ACodec.h
++++ b/media/libstagefright/include/media/stagefright/ACodec.h
+@@ -499,6 +499,7 @@ private:
+     status_t setupAMRCodec(bool encoder, bool isWAMR, int32_t bitRate);
+     status_t setupG711Codec(bool encoder, int32_t sampleRate, int32_t numChannels);
+ 
++    status_t setupOpusCodec(bool encoder, int32_t sampleRate, int32_t numChannels);
+     status_t setupFlacCodec(
+             bool encoder, int32_t numChannels, int32_t sampleRate, int32_t compressionLevel,
+             AudioEncoding encoding);
+-- 
+2.31.0
+
+
+From a1d4f06990a1d0d464ee97446464459101b37515 Mon Sep 17 00:00:00 2001
+From: Wonsik Kim <wonsik@google.com>
+Date: Tue, 22 Sep 2020 18:44:47 -0700
+Subject: [PATCH 03/23] ACodec: submit extra output metadata buffers if in low
+ latency mode
+
+Bug: 166250452
+Test: atest CtsMediaTestCases:DecoderTest
+Merged-In: I134a16a70e8ac94dbd4f505c0a5553a3ca0f87a2
+Change-Id: I134a16a70e8ac94dbd4f505c0a5553a3ca0f87a2
+(cherry picked from commit 7e0bb3845b3059c0ee5bd33e506368828cca40fe)
+---
+ media/libstagefright/ACodec.cpp               | 39 ++++++++++++++++++-
+ .../include/media/stagefright/ACodec.h        |  2 +
+ 2 files changed, 39 insertions(+), 2 deletions(-)
+
+diff --git a/media/libstagefright/ACodec.cpp b/media/libstagefright/ACodec.cpp
+index 5b008a7309..413c7e39a0 100644
+--- a/media/libstagefright/ACodec.cpp
++++ b/media/libstagefright/ACodec.cpp
+@@ -279,6 +279,13 @@ protected:
+ 
+     void postFillThisBuffer(BufferInfo *info);
+ 
++    void maybePostExtraOutputMetadataBufferRequest() {
++        if (!mPendingExtraOutputMetadataBufferRequest) {
++            (new AMessage(kWhatSubmitExtraOutputMetadataBuffer, mCodec))->post();
++            mPendingExtraOutputMetadataBufferRequest = true;
++        }
++    }
++
+ private:
+     // Handles an OMX message. Returns true iff message was handled.
+     bool onOMXMessage(const sp<AMessage> &msg);
+@@ -302,6 +309,8 @@ private:
+ 
+     void getMoreInputDataIfPossible();
+ 
++    bool mPendingExtraOutputMetadataBufferRequest;
++
+     DISALLOW_EVIL_CONSTRUCTORS(BaseState);
+ };
+ 
+@@ -555,6 +564,7 @@ ACodec::ACodec()
+       mShutdownInProgress(false),
+       mExplicitShutdown(false),
+       mIsLegacyVP9Decoder(false),
++      mIsLowLatency(false),
+       mEncoderDelay(0),
+       mEncoderPadding(0),
+       mRotationDegrees(0),
+@@ -2415,6 +2425,7 @@ status_t ACodec::setLowLatency(int32_t lowLatency) {
+     if (err != OK) {
+         ALOGE("decoder can not set low-latency to %d (err %d)", lowLatency, err);
+     }
++    mIsLowLatency = (lowLatency && err == OK);
+     return err;
+ }
+ 
+@@ -5776,7 +5787,8 @@ status_t ACodec::requestIDRFrame() {
+ 
+ ACodec::BaseState::BaseState(ACodec *codec, const sp<AState> &parentState)
+     : AState(parentState),
+-      mCodec(codec) {
++      mCodec(codec),
++      mPendingExtraOutputMetadataBufferRequest(false) {
+ }
+ 
+ ACodec::BaseState::PortMode ACodec::BaseState::getPortMode(
+@@ -5877,6 +5889,21 @@ bool ACodec::BaseState::onMessageReceived(const sp<AMessage> &msg) {
+             break;
+         }
+ 
++        case kWhatSubmitExtraOutputMetadataBuffer: {
++            mPendingExtraOutputMetadataBufferRequest = false;
++            if (getPortMode(kPortIndexOutput) == RESUBMIT_BUFFERS && mCodec->mIsLowLatency) {
++                // Decoders often need more than one output buffer to be
++                // submitted before processing a single input buffer.
++                // For low latency codecs, we don't want to wait for more input
++                // to be queued to get those output buffers submitted.
++                if (mCodec->submitOutputMetadataBuffer() == OK
++                        && mCodec->mMetadataBuffersToSubmit > 0) {
++                    maybePostExtraOutputMetadataBufferRequest();
++                }
++            }
++            break;
++        }
++
+         default:
+             return false;
+     }
+@@ -6233,7 +6260,12 @@ void ACodec::BaseState::onInputBufferFilled(const sp<AMessage> &msg) {
+                             (outputMode == FREE_BUFFERS ? "FREE" :
+                              outputMode == KEEP_BUFFERS ? "KEEP" : "RESUBMIT"));
+                     if (outputMode == RESUBMIT_BUFFERS) {
+-                        mCodec->submitOutputMetadataBuffer();
++                        status_t err = mCodec->submitOutputMetadataBuffer();
++                        if (mCodec->mIsLowLatency
++                                && err == OK
++                                && mCodec->mMetadataBuffersToSubmit > 0) {
++                            maybePostExtraOutputMetadataBufferRequest();
++                        }
+                     }
+                 }
+                 info->checkReadFence("onInputBufferFilled");
+@@ -7379,6 +7411,9 @@ void ACodec::ExecutingState::submitOutputMetaBuffers() {
+                 break;
+         }
+     }
++    if (mCodec->mIsLowLatency) {
++        maybePostExtraOutputMetadataBufferRequest();
++    }
+ 
+     // *** NOTE: THE FOLLOWING WORKAROUND WILL BE REMOVED ***
+     mCodec->signalSubmitOutputMetadataBufferIfEOS_workaround();
+diff --git a/media/libstagefright/include/media/stagefright/ACodec.h b/media/libstagefright/include/media/stagefright/ACodec.h
+index 105e7f7f98..8ef92783ec 100644
+--- a/media/libstagefright/include/media/stagefright/ACodec.h
++++ b/media/libstagefright/include/media/stagefright/ACodec.h
+@@ -147,6 +147,7 @@ private:
+         kWhatReleaseCodecInstance    = 'relC',
+         kWhatForceStateTransition    = 'fstt',
+         kWhatCheckIfStuck            = 'Cstk',
++        kWhatSubmitExtraOutputMetadataBuffer = 'sbxo',
+     };
+ 
+     enum {
+@@ -272,6 +273,7 @@ private:
+     bool mShutdownInProgress;
+     bool mExplicitShutdown;
+     bool mIsLegacyVP9Decoder;
++    bool mIsLowLatency;
+ 
+     // If "mKeepComponentAllocated" we only transition back to Loaded state
+     // and do not release the component instance.
+-- 
+2.31.0
+
+
+From 2ca2867ef89a98e31baa7523da50cc98b8e1bf9d Mon Sep 17 00:00:00 2001
+From: Paras Nagda <pnagda@codeaurora.org>
+Date: Tue, 27 Oct 2020 13:01:47 +0530
+Subject: [PATCH 04/23] NuPlayerRenderer: Reset negative media time to zero
+
+Reset negative media time to zero before call is made to
+Mediaclock's setStartingTimeMedia().
+
+Test:run android.mediastress.cts.HEVCR1080pAacLongPlayerTest#testPlay00 on gsi
+
+Bug: 170621757
+Bug: 171945667
+Bug: 170797642
+Bug: 171562715
+Bug: 171850618
+Change-Id: I2c405007b38229038119760423156bd53a2701c0
+---
+ media/libmediaplayerservice/nuplayer/NuPlayerRenderer.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/media/libmediaplayerservice/nuplayer/NuPlayerRenderer.cpp b/media/libmediaplayerservice/nuplayer/NuPlayerRenderer.cpp
+index c30f048c2d..7e8fe45121 100644
+--- a/media/libmediaplayerservice/nuplayer/NuPlayerRenderer.cpp
++++ b/media/libmediaplayerservice/nuplayer/NuPlayerRenderer.cpp
+@@ -922,6 +922,11 @@ size_t NuPlayer::Renderer::fillAudioBuffer(void *buffer, size_t size) {
+             firstEntry = false;
+             int64_t mediaTimeUs;
+             CHECK(entry->mBuffer->meta()->findInt64("timeUs", &mediaTimeUs));
++            if (mediaTimeUs < 0) {
++                ALOGD("fillAudioBuffer: reset negative media time %.2f secs to zero",
++                       mediaTimeUs / 1E6);
++                mediaTimeUs = 0;
++            }
+             ALOGV("fillAudioBuffer: rendering audio at media time %.2f secs", mediaTimeUs / 1E6);
+             setAudioFirstAnchorTimeIfNeeded_l(mediaTimeUs);
+         }
+-- 
+2.31.0
+
+
+From 235cfd40d2e2ab213a71f3874f3d672dec871bee Mon Sep 17 00:00:00 2001
+From: Wonsik Kim <wonsik@google.com>
+Date: Thu, 12 Nov 2020 11:14:42 -0800
+Subject: [PATCH 05/23] C2OMXNode: read delay from component to determine
+ buffer count
+
+Bug: 169398817
+Test: atest CtsMediaTestCases -- --module-arg CtsMediaTestCases:size:small
+Test: atest CtsMediaTestCases:VideoEncoderTest
+Change-Id: I76a3411addd83108d2da2c8f74df55acab03a365
+(cherry picked from commit 414eb15c3c6cd7e1677245508fd23899bef01feb)
+---
+ media/codec2/sfplugin/C2OMXNode.cpp | 21 ++++++++++++++++++++-
+ 1 file changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/media/codec2/sfplugin/C2OMXNode.cpp b/media/codec2/sfplugin/C2OMXNode.cpp
+index c7588e9a51..dd1f4858a5 100644
+--- a/media/codec2/sfplugin/C2OMXNode.cpp
++++ b/media/codec2/sfplugin/C2OMXNode.cpp
+@@ -25,6 +25,7 @@
+ #include <C2AllocatorGralloc.h>
+ #include <C2BlockInternal.h>
+ #include <C2Component.h>
++#include <C2Config.h>
+ #include <C2PlatformSupport.h>
+ 
+ #include <OMX_Component.h>
+@@ -44,6 +45,8 @@ namespace android {
+ 
+ namespace {
+ 
++constexpr OMX_U32 kPortIndexInput = 0;
++
+ class Buffer2D : public C2Buffer {
+ public:
+     explicit Buffer2D(C2ConstGraphicBlock block) : C2Buffer({ block }) {}
+@@ -200,11 +203,27 @@ status_t C2OMXNode::getParameter(OMX_INDEXTYPE index, void *params, size_t size)
+                 return BAD_VALUE;
+             }
+             OMX_PARAM_PORTDEFINITIONTYPE *pDef = (OMX_PARAM_PORTDEFINITIONTYPE *)params;
+-            // TODO: read these from intf()
++            if (pDef->nPortIndex != kPortIndexInput) {
++                break;
++            }
++
+             pDef->nBufferCountActual = 16;
++
++            std::shared_ptr<Codec2Client::Component> comp = mComp.lock();
++            C2PortActualDelayTuning::input inputDelay(0);
++            C2ActualPipelineDelayTuning pipelineDelay(0);
++            c2_status_t c2err = comp->query(
++                    {&inputDelay, &pipelineDelay}, {}, C2_DONT_BLOCK, nullptr);
++            if (c2err == C2_OK || c2err == C2_BAD_INDEX) {
++                pDef->nBufferCountActual = 4;
++                pDef->nBufferCountActual += (inputDelay ? inputDelay.value : 0u);
++                pDef->nBufferCountActual += (pipelineDelay ? pipelineDelay.value : 0u);
++            }
++
+             pDef->eDomain = OMX_PortDomainVideo;
+             pDef->format.video.nFrameWidth = mWidth;
+             pDef->format.video.nFrameHeight = mHeight;
++            pDef->format.video.eColorFormat = OMX_COLOR_FormatAndroidOpaque;
+             err = OK;
+             break;
+         }
+-- 
+2.31.0
+
+
+From ddd07532ab62d7649ace385373167ee225e58654 Mon Sep 17 00:00:00 2001
+From: Sungtak Lee <taklee@google.com>
+Date: Sun, 8 Nov 2020 00:07:27 -0800
+Subject: [PATCH 06/23] CCodec: Increase max linear buffer size for 8K video
+
+Increase max linear buffer size to fit a 8K video frame.
+
+Bug: 172190459
+Bug: 173683705
+Bug: 173725276
+Bug: 173768931
+Test: atest CtsMediaTestCases -- --module-arg CtsMediaTestCases:size:small
+
+Change-Id: I47cfc2718447ac51be0f90638d7e7055fd7d95ba
+(cherry picked from commit 5692578e0d3ff5eb273a63ee9a4f07b719508973)
+---
+ media/codec2/sfplugin/CCodecBuffers.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/media/codec2/sfplugin/CCodecBuffers.h b/media/codec2/sfplugin/CCodecBuffers.h
+index 4772ab53eb..c383a7ce1a 100644
+--- a/media/codec2/sfplugin/CCodecBuffers.h
++++ b/media/codec2/sfplugin/CCodecBuffers.h
+@@ -33,8 +33,8 @@ class MemoryDealer;
+ class SkipCutBuffer;
+ 
+ constexpr size_t kLinearBufferSize = 1048576;
+-// This can fit 4K RGBA frame, and most likely client won't need more than this.
+-constexpr size_t kMaxLinearBufferSize = 4096 * 2304 * 4;
++// This can fit an 8K frame.
++constexpr size_t kMaxLinearBufferSize = 7680 * 4320 * 2;
+ 
+ /**
+  * Base class for representation of buffers at one port.
+-- 
+2.31.0
+
+
+From abb88075d5bda0f3ba2416f83ae0db1824cd6b95 Mon Sep 17 00:00:00 2001
+From: Lajos Molnar <lajos@google.com>
+Date: Wed, 12 Aug 2020 15:56:31 -0700
+Subject: [PATCH 07/23] omx: calculate nodePrefix only for components listed in
+ IOmx
+
+Also make common prefix matching case insensitive.
+
+Bug: 162578527
+Change-Id: Iaf66967fd519e0c3eabb8f0c320b8c7e7fd03497
+(cherry picked from commit 42f653bd87672f3427bdb522f46c55502e6d20d1)
+---
+ media/libstagefright/omx/1.0/OmxStore.cpp | 20 ++++++++++++++++++--
+ 1 file changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/media/libstagefright/omx/1.0/OmxStore.cpp b/media/libstagefright/omx/1.0/OmxStore.cpp
+index 67f478ead0..b5c116656f 100644
+--- a/media/libstagefright/omx/1.0/OmxStore.cpp
++++ b/media/libstagefright/omx/1.0/OmxStore.cpp
+@@ -54,6 +54,24 @@ OmxStore::OmxStore(
+         });
+     }
+ 
++    if (!nodes.empty()) {
++        auto anyNode = nodes.cbegin();
++        std::string::const_iterator first = anyNode->cbegin();
++        std::string::const_iterator last = anyNode->cend();
++        for (const std::string &name : nodes) {
++            std::string::const_iterator it1 = first;
++            for (std::string::const_iterator it2 = name.cbegin();
++                    it1 != last && it2 != name.cend() && tolower(*it1) == tolower(*it2);
++                    ++it1, ++it2) {
++            }
++            last = it1;
++        }
++        mPrefix = std::string(first, last);
++        LOG(INFO) << "omx common prefix: '" << mPrefix.c_str() << "'";
++    } else {
++        LOG(INFO) << "omx common prefix: no nodes";
++    }
++
+     MediaCodecsXmlParser parser;
+     parser.parseXmlFilesInSearchDirs(xmlNames, searchDirs);
+     if (profilingResultsXmlPath != nullptr) {
+@@ -112,8 +130,6 @@ OmxStore::OmxStore(
+         mRoleList[i] = std::move(role);
+         ++i;
+     }
+-
+-    mPrefix = parser.getCommonPrefix();
+ }
+ 
+ OmxStore::~OmxStore() {
+-- 
+2.31.0
+
+
+From 436e4a42554c7451e242c335142b5cc83c2c40f8 Mon Sep 17 00:00:00 2001
+From: Wonsik Kim <wonsik@google.com>
+Date: Wed, 25 Nov 2020 10:12:32 -0800
+Subject: [PATCH 08/23] C2AllocatorBlob: allow multiple maps
+
+Test: CtsMediaTestCases:DecoderTest
+Test: CtsMediaV2TestCases:CodecDecoderTest
+Test: VtsHalMediaC2V1_0TargetVideoDecTest
+Test: VtsHalMediaC2V1_0TargetVideoEncTest
+Test: VtsHalMediaC2V1_0TargetAudioDecTest
+Test: VtsHalMediaC2V1_0TargetAudioEncTest
+Bug: 173730101
+Change-Id: Ief24371e19c8e957ea218ffd9bbfd516353b0cc9
+(cherry picked from d04f34cdd8c7ce1a3249a9fbfdd18ca989bb1685)
+---
+ media/codec2/vndk/C2AllocatorBlob.cpp | 72 ++++++++++++++++++++++++---
+ 1 file changed, 66 insertions(+), 6 deletions(-)
+
+diff --git a/media/codec2/vndk/C2AllocatorBlob.cpp b/media/codec2/vndk/C2AllocatorBlob.cpp
+index 50c9e59af8..aa054998f8 100644
+--- a/media/codec2/vndk/C2AllocatorBlob.cpp
++++ b/media/codec2/vndk/C2AllocatorBlob.cpp
+@@ -17,6 +17,8 @@
+ // #define LOG_NDEBUG 0
+ #define LOG_TAG "C2AllocatorBlob"
+ 
++#include <set>
++
+ #include <C2AllocatorBlob.h>
+ #include <C2PlatformSupport.h>
+ 
+@@ -67,6 +69,10 @@ public:
+ private:
+     const std::shared_ptr<C2GraphicAllocation> mGraphicAllocation;
+     const C2Allocator::id_t mAllocatorId;
++
++    std::mutex mMapLock;
++    std::multiset<std::pair<size_t, size_t>> mMappedOffsetSize;
++    uint8_t *mMappedAddr;
+ };
+ 
+ C2AllocationBlob::C2AllocationBlob(
+@@ -74,20 +80,74 @@ C2AllocationBlob::C2AllocationBlob(
+         C2Allocator::id_t allocatorId)
+       : C2LinearAllocation(capacity),
+         mGraphicAllocation(std::move(graphicAllocation)),
+-        mAllocatorId(allocatorId) {}
++        mAllocatorId(allocatorId),
++        mMappedAddr(nullptr) {}
+ 
+-C2AllocationBlob::~C2AllocationBlob() {}
++C2AllocationBlob::~C2AllocationBlob() {
++    if (mMappedAddr) {
++        C2Rect rect(capacity(), kLinearBufferHeight);
++        mGraphicAllocation->unmap(&mMappedAddr, rect, nullptr);
++    }
++}
+ 
+ c2_status_t C2AllocationBlob::map(size_t offset, size_t size, C2MemoryUsage usage,
+                                   C2Fence* fence, void** addr /* nonnull */) {
++    *addr = nullptr;
++    if (size > capacity() || offset > capacity() || offset > capacity() - size) {
++        ALOGV("C2AllocationBlob: map: bad offset / size: offset=%zu size=%zu capacity=%u",
++                offset, size, capacity());
++        return C2_BAD_VALUE;
++    }
++    std::unique_lock<std::mutex> lock(mMapLock);
++    if (mMappedAddr) {
++        *addr = mMappedAddr + offset;
++        mMappedOffsetSize.insert({offset, size});
++        ALOGV("C2AllocationBlob: mapped from existing mapping: offset=%zu size=%zu capacity=%u",
++                offset, size, capacity());
++        return C2_OK;
++    }
+     C2PlanarLayout layout;
+-    C2Rect rect = C2Rect(size, kLinearBufferHeight).at(offset, 0u);
+-    return mGraphicAllocation->map(rect, usage, fence, &layout, reinterpret_cast<uint8_t**>(addr));
++    C2Rect rect = C2Rect(capacity(), kLinearBufferHeight);
++    c2_status_t err = mGraphicAllocation->map(rect, usage, fence, &layout, &mMappedAddr);
++    if (err != C2_OK) {
++        ALOGV("C2AllocationBlob: map failed: offset=%zu size=%zu capacity=%u err=%d",
++                offset, size, capacity(), err);
++        mMappedAddr = nullptr;
++        return err;
++    }
++    *addr = mMappedAddr + offset;
++    mMappedOffsetSize.insert({offset, size});
++    ALOGV("C2AllocationBlob: new map succeeded: offset=%zu size=%zu capacity=%u",
++            offset, size, capacity());
++    return C2_OK;
+ }
+ 
+ c2_status_t C2AllocationBlob::unmap(void* addr, size_t size, C2Fence* fenceFd) {
+-    C2Rect rect(size, kLinearBufferHeight);
+-    return mGraphicAllocation->unmap(reinterpret_cast<uint8_t**>(&addr), rect, fenceFd);
++    std::unique_lock<std::mutex> lock(mMapLock);
++    uint8_t *u8Addr = static_cast<uint8_t *>(addr);
++    if (u8Addr < mMappedAddr || mMappedAddr + capacity() < u8Addr + size) {
++        ALOGV("C2AllocationBlob: unmap: Bad addr / size: addr=%p size=%zu capacity=%u",
++                addr, size, capacity());
++        return C2_BAD_VALUE;
++    }
++    auto it = mMappedOffsetSize.find(std::make_pair(u8Addr - mMappedAddr, size));
++    if (it == mMappedOffsetSize.end()) {
++        ALOGV("C2AllocationBlob: unrecognized map: addr=%p size=%zu capacity=%u",
++                addr, size, capacity());
++        return C2_BAD_VALUE;
++    }
++    mMappedOffsetSize.erase(it);
++    if (!mMappedOffsetSize.empty()) {
++        ALOGV("C2AllocationBlob: still maintain mapping: addr=%p size=%zu capacity=%u",
++                addr, size, capacity());
++        return C2_OK;
++    }
++    C2Rect rect(capacity(), kLinearBufferHeight);
++    c2_status_t err = mGraphicAllocation->unmap(&mMappedAddr, rect, fenceFd);
++    ALOGV("C2AllocationBlob: last unmap: addr=%p size=%zu capacity=%u err=%d",
++            addr, size, capacity(), err);
++    mMappedAddr = nullptr;
++    return err;
+ }
+ 
+ /* ====================================== BLOB ALLOCATOR ====================================== */
+-- 
+2.31.0
+
+
+From 1cf537d00c851aa22089cc2c0970048e9462af1f Mon Sep 17 00:00:00 2001
+From: Wonsik Kim <wonsik@google.com>
+Date: Thu, 3 Dec 2020 11:07:58 -0800
+Subject: [PATCH 09/23] CCodec: fix ByteBuffer mode image
+
+- Set offset to (0,0) of Y plane.
+- Fix wrapping criteria.
+
+Bug: 169379476
+Test: atest CtsMediaTestCases -- --module-arg CtsMediaTestCases:size:small
+Test: atest ccodec_unit_test
+Change-Id: Ic7e074ddaef277833707363b0b9fecfe210bd57f
+(cherry picked from commit 2eb063152f67e886472ed42c07f3634a5eb63f19)
+---
+ media/codec2/sfplugin/CCodecBuffers.cpp       |   3 +
+ media/codec2/sfplugin/Codec2Buffer.cpp        |  14 +-
+ .../sfplugin/tests/CCodecBuffers_test.cpp     | 450 +++++++++++++++++-
+ 3 files changed, 456 insertions(+), 11 deletions(-)
+
+diff --git a/media/codec2/sfplugin/CCodecBuffers.cpp b/media/codec2/sfplugin/CCodecBuffers.cpp
+index 692da584ce..566a18fbee 100644
+--- a/media/codec2/sfplugin/CCodecBuffers.cpp
++++ b/media/codec2/sfplugin/CCodecBuffers.cpp
+@@ -96,6 +96,9 @@ void CCodecBuffers::handleImageData(const sp<Codec2Buffer> &buffer) {
+                 int32_t vstride = int32_t(offsetDelta / stride);
+                 newFormat->setInt32(KEY_SLICE_HEIGHT, vstride);
+                 ALOGD("[%s] updating vstride = %d", mName, vstride);
++                buffer->setRange(
++                        img->mPlane[0].mOffset,
++                        buffer->size() - img->mPlane[0].mOffset);
+             }
+         }
+         setFormat(newFormat);
+diff --git a/media/codec2/sfplugin/Codec2Buffer.cpp b/media/codec2/sfplugin/Codec2Buffer.cpp
+index 25e7da9206..19414a0a0c 100644
+--- a/media/codec2/sfplugin/Codec2Buffer.cpp
++++ b/media/codec2/sfplugin/Codec2Buffer.cpp
+@@ -276,20 +276,22 @@ public:
+                             int32_t planeSize = 0;
+                             for (uint32_t i = 0; i < layout.numPlanes; ++i) {
+                                 const C2PlaneInfo &plane = layout.planes[i];
+-                                ssize_t minOffset = plane.minOffset(mWidth, mHeight);
+-                                ssize_t maxOffset = plane.maxOffset(mWidth, mHeight);
++                                int64_t planeStride = std::abs(plane.rowInc / plane.colInc);
++                                ssize_t minOffset = plane.minOffset(
++                                        mWidth / plane.colSampling, mHeight / plane.rowSampling);
++                                ssize_t maxOffset = plane.maxOffset(
++                                        mWidth / plane.colSampling, mHeight / plane.rowSampling);
+                                 if (minPtr > mView.data()[i] + minOffset) {
+                                     minPtr = mView.data()[i] + minOffset;
+                                 }
+                                 if (maxPtr < mView.data()[i] + maxOffset) {
+                                     maxPtr = mView.data()[i] + maxOffset;
+                                 }
+-                                planeSize += std::abs(plane.rowInc) * align(mHeight, 64)
+-                                        / plane.rowSampling / plane.colSampling
+-                                        * divUp(mAllocatedDepth, 8u);
++                                planeSize += planeStride * divUp(mAllocatedDepth, 8u)
++                                        * align(mHeight, 64) / plane.rowSampling;
+                             }
+ 
+-                            if ((maxPtr - minPtr + 1) <= planeSize) {
++                            if (minPtr == mView.data()[0] && (maxPtr - minPtr + 1) <= planeSize) {
+                                 // FIXME: this is risky as reading/writing data out of bound results
+                                 //        in an undefined behavior, but gralloc does assume a
+                                 //        contiguous mapping
+diff --git a/media/codec2/sfplugin/tests/CCodecBuffers_test.cpp b/media/codec2/sfplugin/tests/CCodecBuffers_test.cpp
+index 5bee605276..ad8f6e555b 100644
+--- a/media/codec2/sfplugin/tests/CCodecBuffers_test.cpp
++++ b/media/codec2/sfplugin/tests/CCodecBuffers_test.cpp
+@@ -18,22 +18,31 @@
+ 
+ #include <gtest/gtest.h>
+ 
++#include <media/stagefright/foundation/AString.h>
+ #include <media/stagefright/MediaCodecConstants.h>
+ 
++#include <C2BlockInternal.h>
+ #include <C2PlatformSupport.h>
+ 
+ namespace android {
+ 
++static std::shared_ptr<RawGraphicOutputBuffers> GetRawGraphicOutputBuffers(
++        int32_t width, int32_t height) {
++    std::shared_ptr<RawGraphicOutputBuffers> buffers =
++        std::make_shared<RawGraphicOutputBuffers>("test");
++    sp<AMessage> format{new AMessage};
++    format->setInt32(KEY_WIDTH, width);
++    format->setInt32(KEY_HEIGHT, height);
++    buffers->setFormat(format);
++    return buffers;
++}
++
+ TEST(RawGraphicOutputBuffersTest, ChangeNumSlots) {
+     constexpr int32_t kWidth = 3840;
+     constexpr int32_t kHeight = 2160;
+ 
+     std::shared_ptr<RawGraphicOutputBuffers> buffers =
+-        std::make_shared<RawGraphicOutputBuffers>("test");
+-    sp<AMessage> format{new AMessage};
+-    format->setInt32("width", kWidth);
+-    format->setInt32("height", kHeight);
+-    buffers->setFormat(format);
++        GetRawGraphicOutputBuffers(kWidth, kHeight);
+ 
+     std::shared_ptr<C2BlockPool> pool;
+     ASSERT_EQ(OK, GetCodec2BlockPool(C2BlockPool::BASIC_GRAPHIC, nullptr, &pool));
+@@ -96,4 +105,435 @@ TEST(RawGraphicOutputBuffersTest, ChangeNumSlots) {
+     }
+ }
+ 
++class TestGraphicAllocation : public C2GraphicAllocation {
++public:
++    TestGraphicAllocation(
++            uint32_t width,
++            uint32_t height,
++            const C2PlanarLayout &layout,
++            size_t capacity,
++            std::vector<size_t> offsets)
++        : C2GraphicAllocation(width, height),
++          mLayout(layout),
++          mMemory(capacity, 0xAA),
++          mOffsets(offsets) {
++    }
++
++    c2_status_t map(
++            C2Rect rect, C2MemoryUsage usage, C2Fence *fence,
++            C2PlanarLayout *layout, uint8_t **addr) override {
++        (void)rect;
++        (void)usage;
++        (void)fence;
++        *layout = mLayout;
++        for (size_t i = 0; i < mLayout.numPlanes; ++i) {
++            addr[i] = mMemory.data() + mOffsets[i];
++        }
++        return C2_OK;
++    }
++
++    c2_status_t unmap(uint8_t **, C2Rect, C2Fence *) override { return C2_OK; }
++
++    C2Allocator::id_t getAllocatorId() const override { return -1; }
++
++    const C2Handle *handle() const override { return nullptr; }
++
++    bool equals(const std::shared_ptr<const C2GraphicAllocation> &other) const override {
++        return other.get() == this;
++    }
++
++private:
++    C2PlanarLayout mLayout;
++    std::vector<uint8_t> mMemory;
++    std::vector<uint8_t *> mAddr;
++    std::vector<size_t> mOffsets;
++};
++
++class LayoutTest : public ::testing::TestWithParam<std::tuple<bool, std::string, bool, int32_t>> {
++private:
++    static C2PlanarLayout YUVPlanarLayout(int32_t stride) {
++        C2PlanarLayout layout = {
++            C2PlanarLayout::TYPE_YUV,
++            3,  /* numPlanes */
++            3,  /* rootPlanes */
++            {},  /* planes --- to be filled below */
++        };
++        layout.planes[C2PlanarLayout::PLANE_Y] = {
++            C2PlaneInfo::CHANNEL_Y,
++            1,  /* colInc */
++            stride,  /* rowInc */
++            1,  /* colSampling */
++            1,  /* rowSampling */
++            8,  /* allocatedDepth */
++            8,  /* bitDepth */
++            0,  /* rightShift */
++            C2PlaneInfo::NATIVE,
++            C2PlanarLayout::PLANE_Y,  /* rootIx */
++            0,  /* offset */
++        };
++        layout.planes[C2PlanarLayout::PLANE_U] = {
++            C2PlaneInfo::CHANNEL_CB,
++            1,  /* colInc */
++            stride / 2,  /* rowInc */
++            2,  /* colSampling */
++            2,  /* rowSampling */
++            8,  /* allocatedDepth */
++            8,  /* bitDepth */
++            0,  /* rightShift */
++            C2PlaneInfo::NATIVE,
++            C2PlanarLayout::PLANE_U,  /* rootIx */
++            0,  /* offset */
++        };
++        layout.planes[C2PlanarLayout::PLANE_V] = {
++            C2PlaneInfo::CHANNEL_CR,
++            1,  /* colInc */
++            stride / 2,  /* rowInc */
++            2,  /* colSampling */
++            2,  /* rowSampling */
++            8,  /* allocatedDepth */
++            8,  /* bitDepth */
++            0,  /* rightShift */
++            C2PlaneInfo::NATIVE,
++            C2PlanarLayout::PLANE_V,  /* rootIx */
++            0,  /* offset */
++        };
++        return layout;
++    }
++
++    static C2PlanarLayout YUVSemiPlanarLayout(int32_t stride) {
++        C2PlanarLayout layout = {
++            C2PlanarLayout::TYPE_YUV,
++            3,  /* numPlanes */
++            2,  /* rootPlanes */
++            {},  /* planes --- to be filled below */
++        };
++        layout.planes[C2PlanarLayout::PLANE_Y] = {
++            C2PlaneInfo::CHANNEL_Y,
++            1,  /* colInc */
++            stride,  /* rowInc */
++            1,  /* colSampling */
++            1,  /* rowSampling */
++            8,  /* allocatedDepth */
++            8,  /* bitDepth */
++            0,  /* rightShift */
++            C2PlaneInfo::NATIVE,
++            C2PlanarLayout::PLANE_Y,  /* rootIx */
++            0,  /* offset */
++        };
++        layout.planes[C2PlanarLayout::PLANE_U] = {
++            C2PlaneInfo::CHANNEL_CB,
++            2,  /* colInc */
++            stride,  /* rowInc */
++            2,  /* colSampling */
++            2,  /* rowSampling */
++            8,  /* allocatedDepth */
++            8,  /* bitDepth */
++            0,  /* rightShift */
++            C2PlaneInfo::NATIVE,
++            C2PlanarLayout::PLANE_U,  /* rootIx */
++            0,  /* offset */
++        };
++        layout.planes[C2PlanarLayout::PLANE_V] = {
++            C2PlaneInfo::CHANNEL_CR,
++            2,  /* colInc */
++            stride,  /* rowInc */
++            2,  /* colSampling */
++            2,  /* rowSampling */
++            8,  /* allocatedDepth */
++            8,  /* bitDepth */
++            0,  /* rightShift */
++            C2PlaneInfo::NATIVE,
++            C2PlanarLayout::PLANE_U,  /* rootIx */
++            1,  /* offset */
++        };
++        return layout;
++    }
++
++    static C2PlanarLayout YVUSemiPlanarLayout(int32_t stride) {
++        C2PlanarLayout layout = {
++            C2PlanarLayout::TYPE_YUV,
++            3,  /* numPlanes */
++            2,  /* rootPlanes */
++            {},  /* planes --- to be filled below */
++        };
++        layout.planes[C2PlanarLayout::PLANE_Y] = {
++            C2PlaneInfo::CHANNEL_Y,
++            1,  /* colInc */
++            stride,  /* rowInc */
++            1,  /* colSampling */
++            1,  /* rowSampling */
++            8,  /* allocatedDepth */
++            8,  /* bitDepth */
++            0,  /* rightShift */
++            C2PlaneInfo::NATIVE,
++            C2PlanarLayout::PLANE_Y,  /* rootIx */
++            0,  /* offset */
++        };
++        layout.planes[C2PlanarLayout::PLANE_U] = {
++            C2PlaneInfo::CHANNEL_CB,
++            2,  /* colInc */
++            stride,  /* rowInc */
++            2,  /* colSampling */
++            2,  /* rowSampling */
++            8,  /* allocatedDepth */
++            8,  /* bitDepth */
++            0,  /* rightShift */
++            C2PlaneInfo::NATIVE,
++            C2PlanarLayout::PLANE_V,  /* rootIx */
++            1,  /* offset */
++        };
++        layout.planes[C2PlanarLayout::PLANE_V] = {
++            C2PlaneInfo::CHANNEL_CR,
++            2,  /* colInc */
++            stride,  /* rowInc */
++            2,  /* colSampling */
++            2,  /* rowSampling */
++            8,  /* allocatedDepth */
++            8,  /* bitDepth */
++            0,  /* rightShift */
++            C2PlaneInfo::NATIVE,
++            C2PlanarLayout::PLANE_V,  /* rootIx */
++            0,  /* offset */
++        };
++        return layout;
++    }
++
++    static std::shared_ptr<C2GraphicBlock> CreateGraphicBlock(
++            uint32_t width,
++            uint32_t height,
++            const C2PlanarLayout &layout,
++            size_t capacity,
++            std::vector<size_t> offsets) {
++        std::shared_ptr<C2GraphicAllocation> alloc = std::make_shared<TestGraphicAllocation>(
++                width,
++                height,
++                layout,
++                capacity,
++                offsets);
++
++        return _C2BlockFactory::CreateGraphicBlock(alloc);
++    }
++
++    static constexpr uint8_t GetPixelValue(uint8_t value, uint32_t row, uint32_t col) {
++        return (uint32_t(value) * row + col) & 0xFF;
++    }
++
++    static void FillPlane(C2GraphicView &view, size_t index, uint8_t value) {
++        C2PlanarLayout layout = view.layout();
++
++        uint8_t *rowPtr = view.data()[index];
++        C2PlaneInfo plane = layout.planes[index];
++        for (uint32_t row = 0; row < view.height() / plane.rowSampling; ++row) {
++            uint8_t *colPtr = rowPtr;
++            for (uint32_t col = 0; col < view.width() / plane.colSampling; ++col) {
++                *colPtr = GetPixelValue(value, row, col);
++                colPtr += plane.colInc;
++            }
++            rowPtr += plane.rowInc;
++        }
++    }
++
++    static void FillBlock(const std::shared_ptr<C2GraphicBlock> &block) {
++        C2GraphicView view = block->map().get();
++
++        FillPlane(view, C2PlanarLayout::PLANE_Y, 'Y');
++        FillPlane(view, C2PlanarLayout::PLANE_U, 'U');
++        FillPlane(view, C2PlanarLayout::PLANE_V, 'V');
++    }
++
++    static bool VerifyPlane(
++            const MediaImage2 *mediaImage,
++            const uint8_t *base,
++            uint32_t index,
++            uint8_t value,
++            std::string *errorMsg) {
++        *errorMsg = "";
++        MediaImage2::PlaneInfo plane = mediaImage->mPlane[index];
++        const uint8_t *rowPtr = base + plane.mOffset;
++        for (uint32_t row = 0; row < mediaImage->mHeight / plane.mVertSubsampling; ++row) {
++            const uint8_t *colPtr = rowPtr;
++            for (uint32_t col = 0; col < mediaImage->mWidth / plane.mHorizSubsampling; ++col) {
++                if (GetPixelValue(value, row, col) != *colPtr) {
++                    *errorMsg = AStringPrintf("row=%u col=%u expected=%02x actual=%02x",
++                            row, col, GetPixelValue(value, row, col), *colPtr).c_str();
++                    return false;
++                }
++                colPtr += plane.mColInc;
++            }
++            rowPtr += plane.mRowInc;
++        }
++        return true;
++    }
++
++public:
++    static constexpr int32_t kWidth = 320;
++    static constexpr int32_t kHeight = 240;
++    static constexpr int32_t kGapLength = kWidth * kHeight * 10;
++
++    static std::shared_ptr<C2Buffer> CreateAndFillBufferFromParam(const ParamType &param) {
++        bool contiguous = std::get<0>(param);
++        std::string planeOrderStr = std::get<1>(param);
++        bool planar = std::get<2>(param);
++        int32_t stride = std::get<3>(param);
++
++        C2PlanarLayout::plane_index_t planeOrder[3];
++        C2PlanarLayout layout;
++
++        if (planeOrderStr.size() != 3) {
++            return nullptr;
++        }
++        for (size_t i = 0; i < 3; ++i) {
++            C2PlanarLayout::plane_index_t planeIndex;
++            switch (planeOrderStr[i]) {
++                case 'Y': planeIndex = C2PlanarLayout::PLANE_Y; break;
++                case 'U': planeIndex = C2PlanarLayout::PLANE_U; break;
++                case 'V': planeIndex = C2PlanarLayout::PLANE_V; break;
++                default:  return nullptr;
++            }
++            planeOrder[i] = planeIndex;
++        }
++
++        if (planar) {
++            layout = YUVPlanarLayout(stride);
++        } else {  // semi-planar
++            for (size_t i = 0; i < 3; ++i) {
++                if (planeOrder[i] == C2PlanarLayout::PLANE_U) {
++                    layout = YUVSemiPlanarLayout(stride);
++                    break;
++                }
++                if (planeOrder[i] == C2PlanarLayout::PLANE_V) {
++                    layout = YVUSemiPlanarLayout(stride);
++                    break;
++                }
++            }
++        }
++
++        size_t yPlaneSize = stride * kHeight;
++        size_t uvPlaneSize = stride * kHeight / 4;
++        size_t capacity = yPlaneSize + uvPlaneSize * 2;
++        std::vector<size_t> offsets(3);
++
++        if (!contiguous) {
++            if (planar) {
++                capacity += kGapLength * 2;
++            } else {  // semi-planar
++                capacity += kGapLength;
++            }
++        }
++
++        offsets[planeOrder[0]] = 0;
++        size_t planeSize = (planeOrder[0] == C2PlanarLayout::PLANE_Y) ? yPlaneSize : uvPlaneSize;
++        for (size_t i = 1; i < 3; ++i) {
++            offsets[planeOrder[i]] = offsets[planeOrder[i - 1]] + planeSize;
++            if (!contiguous) {
++                offsets[planeOrder[i]] += kGapLength;
++            }
++            planeSize = (planeOrder[i] == C2PlanarLayout::PLANE_Y) ? yPlaneSize : uvPlaneSize;
++            if (!planar  // semi-planar
++                    && planeOrder[i - 1] != C2PlanarLayout::PLANE_Y
++                    && planeOrder[i] != C2PlanarLayout::PLANE_Y) {
++                offsets[planeOrder[i]] = offsets[planeOrder[i - 1]] + 1;
++                planeSize = uvPlaneSize * 2 - 1;
++            }
++        }
++
++        std::shared_ptr<C2GraphicBlock> block = CreateGraphicBlock(
++                kWidth,
++                kHeight,
++                layout,
++                capacity,
++                offsets);
++        FillBlock(block);
++        return C2Buffer::CreateGraphicBuffer(
++                block->share(block->crop(), C2Fence()));
++    }
++
++    static bool VerifyClientBuffer(
++            const sp<MediaCodecBuffer> &buffer, std::string *errorMsg) {
++        *errorMsg = "";
++        sp<ABuffer> imageData;
++        if (!buffer->format()->findBuffer("image-data", &imageData)) {
++            *errorMsg = "Missing image data";
++            return false;
++        }
++        MediaImage2 *mediaImage = (MediaImage2 *)imageData->data();
++        if (mediaImage->mType != MediaImage2::MEDIA_IMAGE_TYPE_YUV) {
++            *errorMsg = AStringPrintf("Unexpected type: %d", mediaImage->mType).c_str();
++            return false;
++        }
++        std::string planeErrorMsg;
++        if (!VerifyPlane(mediaImage, buffer->base(), MediaImage2::Y, 'Y', &planeErrorMsg)) {
++            *errorMsg = "Y plane does not match: " + planeErrorMsg;
++            return false;
++        }
++        if (!VerifyPlane(mediaImage, buffer->base(), MediaImage2::U, 'U', &planeErrorMsg)) {
++            *errorMsg = "U plane does not match: " + planeErrorMsg;
++            return false;
++        }
++        if (!VerifyPlane(mediaImage, buffer->base(), MediaImage2::V, 'V', &planeErrorMsg)) {
++            *errorMsg = "V plane does not match: " + planeErrorMsg;
++            return false;
++        }
++
++        int32_t width, height, stride;
++        buffer->format()->findInt32(KEY_WIDTH, &width);
++        buffer->format()->findInt32(KEY_HEIGHT, &height);
++        buffer->format()->findInt32(KEY_STRIDE, &stride);
++
++        MediaImage2 legacyYLayout = {
++            MediaImage2::MEDIA_IMAGE_TYPE_Y,
++            1,  // mNumPlanes
++            uint32_t(width),
++            uint32_t(height),
++            8,
++            8,
++            {},  // mPlane
++        };
++        legacyYLayout.mPlane[MediaImage2::Y] = {
++            0,  // mOffset
++            1,  // mColInc
++            stride,  // mRowInc
++            1,  // mHorizSubsampling
++            1,  // mVertSubsampling
++        };
++        if (!VerifyPlane(&legacyYLayout, buffer->data(), MediaImage2::Y, 'Y', &planeErrorMsg)) {
++            *errorMsg = "Y plane by legacy layout does not match: " + planeErrorMsg;
++            return false;
++        }
++        return true;
++    }
++
++};
++
++TEST_P(LayoutTest, VerifyLayout) {
++    std::shared_ptr<RawGraphicOutputBuffers> buffers =
++        GetRawGraphicOutputBuffers(kWidth, kHeight);
++
++    std::shared_ptr<C2Buffer> c2Buffer = CreateAndFillBufferFromParam(GetParam());
++    ASSERT_NE(nullptr, c2Buffer);
++    sp<MediaCodecBuffer> clientBuffer;
++    size_t index;
++    ASSERT_EQ(OK, buffers->registerBuffer(c2Buffer, &index, &clientBuffer));
++    ASSERT_NE(nullptr, clientBuffer);
++    std::string errorMsg;
++    ASSERT_TRUE(VerifyClientBuffer(clientBuffer, &errorMsg)) << errorMsg;
++}
++
++INSTANTIATE_TEST_SUITE_P(
++        RawGraphicOutputBuffersTest,
++        LayoutTest,
++        ::testing::Combine(
++            ::testing::Bool(),  /* contiguous */
++            ::testing::Values("YUV", "YVU", "UVY", "VUY"),
++            ::testing::Bool(),  /* planar */
++            ::testing::Values(320, 512)),
++        [](const ::testing::TestParamInfo<LayoutTest::ParamType> &info) {
++            std::string contiguous = std::get<0>(info.param) ? "Contiguous" : "Noncontiguous";
++            std::string planar = std::get<2>(info.param) ? "Planar" : "SemiPlanar";
++            return contiguous
++                    + std::get<1>(info.param)
++                    + planar
++                    + std::to_string(std::get<3>(info.param));
++        });
++
+ } // namespace android
+-- 
+2.31.0
+
+
+From 88c016e0ce1560a2eb70bd951979f7a177b1defc Mon Sep 17 00:00:00 2001
+From: Taehwan Kim <t_h.kim@samsung.com>
+Date: Thu, 26 Nov 2020 22:40:40 +0900
+Subject: [PATCH 10/23] CCodec: GraphicBufferSourceWrapper: fix to apply
+ nBufferCountActual for deciding number of inputs
+
+Bug: 169398817
+
+Change-Id: I58cd7da35a3ddc4abdb58df954307acf329c7ee7
+Signed-off-by: Taehwan Kim <t_h.kim@samsung.com>
+(cherry picked from commit 8b3bcddbc98af38d64a1ffefd5932b498f9d4c36)
+---
+ media/codec2/sfplugin/CCodec.cpp | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/media/codec2/sfplugin/CCodec.cpp b/media/codec2/sfplugin/CCodec.cpp
+index 54107bd852..2f16ca1104 100644
+--- a/media/codec2/sfplugin/CCodec.cpp
++++ b/media/codec2/sfplugin/CCodec.cpp
+@@ -246,8 +246,19 @@ public:
+         if (source == nullptr) {
+             return NO_INIT;
+         }
+-        constexpr size_t kNumSlots = 16;
+-        for (size_t i = 0; i < kNumSlots; ++i) {
++
++        size_t numSlots = 4;
++        constexpr OMX_U32 kPortIndexInput = 0;
++
++        OMX_PARAM_PORTDEFINITIONTYPE param;
++        param.nPortIndex = kPortIndexInput;
++        status_t err = mNode->getParameter(OMX_IndexParamPortDefinition,
++                                           &param, sizeof(param));
++        if (err == OK) {
++            numSlots = param.nBufferCountActual;
++        }
++
++        for (size_t i = 0; i < numSlots; ++i) {
+             source->onInputBufferAdded(i);
+         }
+ 
+-- 
+2.31.0
+
+
+From 9cc89915ec20ff16f22374b721122db723df3b63 Mon Sep 17 00:00:00 2001
+From: Houxiang Dai <houxiang.dai@mediatek.com>
+Date: Thu, 23 Jul 2020 14:07:22 +0800
+Subject: [PATCH 11/23] ACodec: Handle HDR10+ metadata at
+ OutputPortSettingsChangedState
+
+[Description]
+handle kWhatSetParameters message in OutputPortSettingsChangedState
+handle OMX_EventConfigUpdate event in OutputPortSettingsChangedState
+
+In HDR10+ test, we have to associate each HDR10+ metadata to a particular
+frame. If receive a kWhatSetParameters message with "hdr10-plus-info"
+buffer, it should not be deferred in OutputPortSettingsChangedState and
+adopt OMX_SetConfig to associates this config with the next input buffer
+sent in OMX_EmptyThisBuffer. The OMX_EventConfigUpdate event report from
+component should be handled also in OutputPortSettingsChangedState,
+where is to associate updated "hdr10-plus-info" metadata with the next
+output buffer sent via FillBufferDone callback.
+
+Bug: 157213958
+Bug: 157435393
+Change-Id: I27e4614487414063831fa760b9e9ca96b1c3712c
+(cherry picked from commit c111aa4fda9b5b434edb1b46898ff8dd7e51cec6)
+---
+ media/libstagefright/ACodec.cpp | 36 ++++++++++++++++++++++++++++++---
+ 1 file changed, 33 insertions(+), 3 deletions(-)
+
+diff --git a/media/libstagefright/ACodec.cpp b/media/libstagefright/ACodec.cpp
+index 413c7e39a0..acf96fd9b8 100644
+--- a/media/libstagefright/ACodec.cpp
++++ b/media/libstagefright/ACodec.cpp
+@@ -8349,13 +8349,34 @@ bool ACodec::OutputPortSettingsChangedState::onMessageReceived(
+             FALLTHROUGH_INTENDED;
+         }
+         case kWhatResume:
++        {
++            ALOGV("[%s] Deferring resume", mCodec->mComponentName.c_str());
++
++            mCodec->deferMessage(msg);
++            handled = true;
++            break;
++        }
++
+         case kWhatSetParameters:
+         {
+-            if (msg->what() == kWhatResume) {
+-                ALOGV("[%s] Deferring resume", mCodec->mComponentName.c_str());
++            sp<AMessage> params;
++            CHECK(msg->findMessage("params", &params));
++
++            sp<ABuffer> hdr10PlusInfo;
++            if (params->findBuffer("hdr10-plus-info", &hdr10PlusInfo)) {
++                if (hdr10PlusInfo != nullptr && hdr10PlusInfo->size() > 0) {
++                    (void)mCodec->setHdr10PlusInfo(hdr10PlusInfo);
++                }
++                params->removeEntryAt(params->findEntryByName("hdr10-plus-info"));
++
++                if (params->countEntries() == 0) {
++                    msg->removeEntryAt(msg->findEntryByName("params"));
++                }
+             }
+ 
+-            mCodec->deferMessage(msg);
++            if (msg->countEntries() > 0) {
++                mCodec->deferMessage(msg);
++            }
+             handled = true;
+             break;
+         }
+@@ -8470,6 +8491,15 @@ bool ACodec::OutputPortSettingsChangedState::onOMXEvent(
+             return false;
+         }
+ 
++        case OMX_EventConfigUpdate:
++        {
++            CHECK_EQ(data1, (OMX_U32)kPortIndexOutput);
++
++            mCodec->onConfigUpdate((OMX_INDEXTYPE)data2);
++
++            return true;
++        }
++
+         default:
+             return BaseState::onOMXEvent(event, data1, data2);
+     }
+-- 
+2.31.0
+
+
+From 52db68f465f0674039b86d33b0272dc8a6805424 Mon Sep 17 00:00:00 2001
+From: wangchenyang <daniellingyx@gmail.com>
+Date: Thu, 24 Dec 2020 16:55:50 +0800
+Subject: [PATCH 12/23] Codec2: Initialize InputSurfaceWrapper::Config
+ structure fields
+
+Initialize the fields of Config structure of
+InputSurfaceWrapper class. If not initialised, there
+is a chance of junk values being used during configure
+
+Bug: 171763471
+Bug: 175443996
+Test: TH
+
+Change-Id: Id5ac827df0c2ef6ad761ab5a235162a9358c1704
+(cherry picked from commit a1ab7eb891728b77cc4bf03fedd21574bd8ec586)
+---
+ media/codec2/sfplugin/InputSurfaceWrapper.h | 28 ++++++++++-----------
+ 1 file changed, 14 insertions(+), 14 deletions(-)
+
+diff --git a/media/codec2/sfplugin/InputSurfaceWrapper.h b/media/codec2/sfplugin/InputSurfaceWrapper.h
+index bb35763f41..479acb109b 100644
+--- a/media/codec2/sfplugin/InputSurfaceWrapper.h
++++ b/media/codec2/sfplugin/InputSurfaceWrapper.h
+@@ -61,24 +61,24 @@ public:
+     /// Input Surface configuration
+     struct Config {
+         // IN PARAMS (GBS)
+-        float mMinFps; // minimum fps (repeat frame to achieve this)
+-        float mMaxFps; // max fps (via frame drop)
+-        float mCaptureFps; // capture fps
+-        float mCodedFps;   // coded fps
+-        bool mSuspended; // suspended
+-        int64_t mTimeOffsetUs; // time offset (input => codec)
+-        int64_t mSuspendAtUs; // suspend/resume time
+-        int64_t mStartAtUs; // start time
+-        bool mStopped; // stopped
+-        int64_t mStopAtUs; // stop time
++        float mMinFps = 0.0; // minimum fps (repeat frame to achieve this)
++        float mMaxFps = 0.0; // max fps (via frame drop)
++        float mCaptureFps = 0.0; // capture fps
++        float mCodedFps = 0.0;   // coded fps
++        bool mSuspended = false; // suspended
++        int64_t mTimeOffsetUs = 0; // time offset (input => codec)
++        int64_t mSuspendAtUs = 0; // suspend/resume time
++        int64_t mStartAtUs = 0; // start time
++        bool mStopped = false; // stopped
++        int64_t mStopAtUs = 0; // stop time
+ 
+         // OUT PARAMS (GBS)
+-        int64_t mInputDelayUs; // delay between encoder input and surface input
++        int64_t mInputDelayUs = 0; // delay between encoder input and surface input
+ 
+         // IN PARAMS (CODEC WRAPPER)
+-        float mFixedAdjustedFps; // fixed fps via PTS manipulation
+-        float mMinAdjustedFps; // minimum fps via PTS manipulation
+-        uint64_t mUsage; // consumer usage
++        float mFixedAdjustedFps = 0.0; // fixed fps via PTS manipulation
++        float mMinAdjustedFps = 0.0; // minimum fps via PTS manipulation
++        uint64_t mUsage = 0; // consumer usage
+     };
+ 
+     /**
+-- 
+2.31.0
+
+
+From f64106059aeb1dcbd9be5f9484f4ac1343326a20 Mon Sep 17 00:00:00 2001
+From: Wonsik Kim <wonsik@google.com>
+Date: Tue, 5 Jan 2021 18:55:22 -0800
+Subject: [PATCH 13/23] CCodec: workaround for frame drops
+
+Retain old behavior for lower resolution (<=4K) to workaround
+possible frame drops.
+
+Bug: 175354926
+Bug: 175182085
+Test: atest CtsCameraTestCases:RecordingTest
+Change-Id: I170102e928714c5b48817bf7915f55ce8a6280f0
+---
+ media/codec2/sfplugin/CCodec.cpp | 23 ++++++++++++++---------
+ 1 file changed, 14 insertions(+), 9 deletions(-)
+
+diff --git a/media/codec2/sfplugin/CCodec.cpp b/media/codec2/sfplugin/CCodec.cpp
+index 2f16ca1104..55ff18f4a2 100644
+--- a/media/codec2/sfplugin/CCodec.cpp
++++ b/media/codec2/sfplugin/CCodec.cpp
+@@ -247,15 +247,20 @@ public:
+             return NO_INIT;
+         }
+ 
+-        size_t numSlots = 4;
+-        constexpr OMX_U32 kPortIndexInput = 0;
+-
+-        OMX_PARAM_PORTDEFINITIONTYPE param;
+-        param.nPortIndex = kPortIndexInput;
+-        status_t err = mNode->getParameter(OMX_IndexParamPortDefinition,
+-                                           &param, sizeof(param));
+-        if (err == OK) {
+-            numSlots = param.nBufferCountActual;
++        size_t numSlots = 16;
++        // WORKAROUND: having more slots improve performance while consuming
++        // more memory. This is a temporary workaround to reduce memory for
++        // larger-than-4K scenario.
++        if (mWidth * mHeight > 4096 * 2340) {
++            constexpr OMX_U32 kPortIndexInput = 0;
++
++            OMX_PARAM_PORTDEFINITIONTYPE param;
++            param.nPortIndex = kPortIndexInput;
++            status_t err = mNode->getParameter(OMX_IndexParamPortDefinition,
++                                               &param, sizeof(param));
++            if (err == OK) {
++                numSlots = param.nBufferCountActual;
++            }
+         }
+ 
+         for (size_t i = 0; i < numSlots; ++i) {
+-- 
+2.31.0
+
+
+From 8e2a98b6cb5a192d9eeae69f17a3630f8c707ee5 Mon Sep 17 00:00:00 2001
+From: Praveen Chavan <pchavan@codeaurora.org>
+Date: Sun, 2 Aug 2020 23:08:33 -0700
+Subject: [PATCH 14/23] CCodec: Optimize output slots for decoder
+
+Do not include input count in the output-slot
+calculation even for non-secure decoders.
+Also, allow reducing output-slots at run-time if
+component signals a change in output-delay
+
+CRs-Fixed: 2681177
+Change-Id: I9343e269fbbea59143bb237cf59315ea6363dabf
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ media/codec2/sfplugin/CCodecBufferChannel.cpp | 15 +++++----------
+ 1 file changed, 5 insertions(+), 10 deletions(-)
+
+diff --git a/media/codec2/sfplugin/CCodecBufferChannel.cpp b/media/codec2/sfplugin/CCodecBufferChannel.cpp
+index 1654b11c31..9a07b299d8 100644
+--- a/media/codec2/sfplugin/CCodecBufferChannel.cpp
++++ b/media/codec2/sfplugin/CCodecBufferChannel.cpp
+@@ -1063,12 +1063,11 @@ status_t CCodecBufferChannel::start(
+             Mutexed<OutputSurface>::Locked output(mOutputSurface);
+             output->maxDequeueBuffers = numOutputSlots +
+                     reorderDepth.value + kRenderingDepth;
+-            if (!secure) {
+-                output->maxDequeueBuffers += numInputSlots;
+-            }
+             outputSurface = output->surface ?
+                     output->surface->getIGraphicBufferProducer() : nullptr;
+             if (outputSurface) {
++                ALOGI("[%s] start: max output delay %u",
++                        mName, output->maxDequeueBuffers);
+                 output->surface->setMaxDequeuedBufferCount(output->maxDequeueBuffers);
+             }
+             outputGeneration = output->generation;
+@@ -1595,14 +1594,11 @@ bool CCodecBufferChannel::handleWork(
+                     if (outputDelay.updateFrom(*param)) {
+                         ALOGV("[%s] onWorkDone: updating output delay %u",
+                               mName, outputDelay.value);
+-                        bool secure = mComponent->getName().find(".secure") !=
+-                                      std::string::npos;
+                         (void)mPipelineWatcher.lock()->outputDelay(
+                                 outputDelay.value);
+ 
+                         bool outputBuffersChanged = false;
+                         size_t numOutputSlots = 0;
+-                        size_t numInputSlots = mInput.lock()->numSlots;
+                         {
+                             Mutexed<Output>::Locked output(mOutput);
+                             if (!output->buffers) {
+@@ -1622,7 +1618,7 @@ bool CCodecBufferChannel::handleWork(
+                                     outputBuffersChanged = true;
+                                 }
+                             }
+-                            numOutputSlots = output->numSlots;
++                            output->numSlots = numOutputSlots;
+                         }
+ 
+                         if (outputBuffersChanged) {
+@@ -1632,10 +1628,9 @@ bool CCodecBufferChannel::handleWork(
+                         uint32_t depth = mOutput.lock()->buffers->getReorderDepth();
+                         Mutexed<OutputSurface>::Locked output(mOutputSurface);
+                         output->maxDequeueBuffers = numOutputSlots + depth + kRenderingDepth;
+-                        if (!secure) {
+-                            output->maxDequeueBuffers += numInputSlots;
+-                        }
+                         if (output->surface) {
++                            ALOGI("[%s] onWorkDone: updating max output delay %u",
++                                    mName, output->maxDequeueBuffers);
+                             output->surface->setMaxDequeuedBufferCount(output->maxDequeueBuffers);
+                         }
+                     }
+-- 
+2.31.0
+
+
+From bb870b276f0d07b88dd60b673735f2d95c2b24ae Mon Sep 17 00:00:00 2001
+From: Praveen Chavan <pchavan@codeaurora.org>
+Date: Thu, 27 Aug 2020 20:34:11 -0700
+Subject: [PATCH 15/23] CCodec: Do not update pipeline-watcher capacity when
+ resuming
+
+When resuming the buffer-channel, do not modify the
+pipeline-watcher's capacity and it is not expected to change.
+Also include smoothness factor when checking the nth work
+in watcher's pipeline.
+
+CRs-Fixed: 2750795
+Change-Id: Ic2abbc3f98d380e0011cdd134ba791a836da591d
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ media/codec2/sfplugin/CCodecBufferChannel.cpp | 26 +++++++++++++++----
+ media/codec2/sfplugin/PipelineWatcher.cpp     |  1 +
+ 2 files changed, 22 insertions(+), 5 deletions(-)
+
+diff --git a/media/codec2/sfplugin/CCodecBufferChannel.cpp b/media/codec2/sfplugin/CCodecBufferChannel.cpp
+index 9a07b299d8..736cfc9158 100644
+--- a/media/codec2/sfplugin/CCodecBufferChannel.cpp
++++ b/media/codec2/sfplugin/CCodecBufferChannel.cpp
+@@ -1063,6 +1063,10 @@ status_t CCodecBufferChannel::start(
+             Mutexed<OutputSurface>::Locked output(mOutputSurface);
+             output->maxDequeueBuffers = numOutputSlots +
+                     reorderDepth.value + kRenderingDepth;
++            bool isHW = mComponent->getName().find("c2.qti") != std::string::npos;
++            if (!isHW) {
++                output->maxDequeueBuffers += numInputSlots;
++            }
+             outputSurface = output->surface ?
+                     output->surface->getIGraphicBufferProducer() : nullptr;
+             if (outputSurface) {
+@@ -1235,8 +1239,9 @@ status_t CCodecBufferChannel::start(
+     // mOutputBuffers are initialized to make sure that lingering callbacks
+     // about buffers from the previous generation do not interfere with the
+     // newly initialized pipeline capacity.
+-
+-    {
++    // Do not update the pipelinewatcher's delays when resuming
++    if (inputFormat) {
++        ALOGD("[%s] start: updating output delay %u", mName, outputDelayValue);
+         Mutexed<PipelineWatcher>::Locked watcher(mPipelineWatcher);
+         watcher->inputDelay(inputDelayValue)
+                 .pipelineDelay(pipelineDelayValue)
+@@ -1592,13 +1597,15 @@ bool CCodecBufferChannel::handleWork(
+                 if (param->forOutput()) {
+                     C2PortActualDelayTuning::output outputDelay;
+                     if (outputDelay.updateFrom(*param)) {
+-                        ALOGV("[%s] onWorkDone: updating output delay %u",
++                        ALOGD("[%s] onWorkDone: updating output delay %u",
+                               mName, outputDelay.value);
+                         (void)mPipelineWatcher.lock()->outputDelay(
+                                 outputDelay.value);
+ 
+                         bool outputBuffersChanged = false;
+                         size_t numOutputSlots = 0;
++                        bool isHW = mComponent->getName().find("c2.qti") != std::string::npos;
++                        size_t numInputSlots = mInput.lock()->numSlots;
+                         {
+                             Mutexed<Output>::Locked output(mOutput);
+                             if (!output->buffers) {
+@@ -1617,8 +1624,12 @@ bool CCodecBufferChannel::handleWork(
+                                     array->grow(numOutputSlots);
+                                     outputBuffersChanged = true;
+                                 }
++                            } else if (!output->buffers->isArrayMode() && isHW) {
++                                ALOGI("[%s] onWorkDone: shrinking output slots from %zu to %zu",
++                                        mName, output->numSlots, numOutputSlots);
++                                output->numSlots = numOutputSlots;
+                             }
+-                            output->numSlots = numOutputSlots;
++                            numOutputSlots = output->numSlots;
+                         }
+ 
+                         if (outputBuffersChanged) {
+@@ -1628,6 +1639,9 @@ bool CCodecBufferChannel::handleWork(
+                         uint32_t depth = mOutput.lock()->buffers->getReorderDepth();
+                         Mutexed<OutputSurface>::Locked output(mOutputSurface);
+                         output->maxDequeueBuffers = numOutputSlots + depth + kRenderingDepth;
++                        if (!isHW) {
++                            output->maxDequeueBuffers += numInputSlots;
++                        }
+                         if (output->surface) {
+                             ALOGI("[%s] onWorkDone: updating max output delay %u",
+                                     mName, output->maxDequeueBuffers);
+@@ -1852,7 +1866,9 @@ PipelineWatcher::Clock::duration CCodecBufferChannel::elapsed() {
+     if (!mInputMetEos) {
+         size_t outputDelay = mOutput.lock()->outputDelay;
+         Mutexed<Input>::Locked input(mInput);
+-        n = input->inputDelay + input->pipelineDelay + outputDelay;
++        n = input->inputDelay + input->pipelineDelay + outputDelay + kSmoothnessFactor;
++        ALOGD("[%s] DEBUG: elapsed: n=%zu [in=%u pipeline=%u out=%zu smoothness=%zu]", mName, n,
++                input->inputDelay, input->pipelineDelay, outputDelay, kSmoothnessFactor);
+     }
+     return mPipelineWatcher.lock()->elapsed(PipelineWatcher::Clock::now(), n);
+ }
+diff --git a/media/codec2/sfplugin/PipelineWatcher.cpp b/media/codec2/sfplugin/PipelineWatcher.cpp
+index 0ee90569f5..e7e8b8af67 100644
+--- a/media/codec2/sfplugin/PipelineWatcher.cpp
++++ b/media/codec2/sfplugin/PipelineWatcher.cpp
+@@ -135,6 +135,7 @@ bool PipelineWatcher::pipelineFull() const {
+ 
+ PipelineWatcher::Clock::duration PipelineWatcher::elapsed(
+         const PipelineWatcher::Clock::time_point &now, size_t n) const {
++    ALOGD("DEBUG: elapsed %zu / %zu", mFramesInPipeline.size(), n);
+     if (mFramesInPipeline.size() <= n) {
+         return Clock::duration::zero();
+     }
+-- 
+2.31.0
+
+
+From 9c3844f7fd66a9c63095966fc16f304dadcb8ec4 Mon Sep 17 00:00:00 2001
+From: Brijesh Patel <pbrijesh@codeaurora.org>
+Date: Wed, 9 Sep 2020 17:30:01 +0530
+Subject: [PATCH 16/23] CCodec: Do not print component name in debug logs if
+ uninitialized
+
+- It may happen that watchdog timeout before component gets created
+  and set, in which case component name might not be initialized
+  before print debug log.
+
+CRs-Fixed: 2773741
+
+Change-Id: I80db0be6a9761dc0fc4a1b3fcde42ccecccf8180
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ media/codec2/sfplugin/CCodecBufferChannel.cpp | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/media/codec2/sfplugin/CCodecBufferChannel.cpp b/media/codec2/sfplugin/CCodecBufferChannel.cpp
+index 736cfc9158..5f6661c660 100644
+--- a/media/codec2/sfplugin/CCodecBufferChannel.cpp
++++ b/media/codec2/sfplugin/CCodecBufferChannel.cpp
+@@ -1867,8 +1867,9 @@ PipelineWatcher::Clock::duration CCodecBufferChannel::elapsed() {
+         size_t outputDelay = mOutput.lock()->outputDelay;
+         Mutexed<Input>::Locked input(mInput);
+         n = input->inputDelay + input->pipelineDelay + outputDelay + kSmoothnessFactor;
+-        ALOGD("[%s] DEBUG: elapsed: n=%zu [in=%u pipeline=%u out=%zu smoothness=%zu]", mName, n,
+-                input->inputDelay, input->pipelineDelay, outputDelay, kSmoothnessFactor);
++        ALOGD("[%s] DEBUG: elapsed: n=%zu [in=%u pipeline=%u out=%zu smoothness=%zu]",
++              mComponentName.c_str(), n, input->inputDelay, input->pipelineDelay,
++              outputDelay, kSmoothnessFactor);
+     }
+     return mPipelineWatcher.lock()->elapsed(PipelineWatcher::Clock::now(), n);
+ }
+-- 
+2.31.0
+
+
+From 49349ddd619b20d88192fadccb3e231df4d5d8c3 Mon Sep 17 00:00:00 2001
+From: Shrikara B <shrikara@codeaurora.org>
+Date: Thu, 29 Oct 2020 18:31:20 +0530
+Subject: [PATCH 17/23] Codec2: Reduce smoothness factor for >4K video
+
+Reduce the smoothness factor for video resolution greater
+than 4K. This is to reduce the number of buffer allocation.
+Since 8K YUV buffers are huge, high number of 8K YUV buffers
+might result in memory exhaustion.
+
+CRs-Fixed: 2807836
+Change-Id: I01099e817b5792a8de682e3fef1a8ef303dd6b89
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ media/codec2/sfplugin/CCodecBufferChannel.cpp | 27 ++++++++++++++++---
+ 1 file changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/media/codec2/sfplugin/CCodecBufferChannel.cpp b/media/codec2/sfplugin/CCodecBufferChannel.cpp
+index 5f6661c660..064a79fe83 100644
+--- a/media/codec2/sfplugin/CCodecBufferChannel.cpp
++++ b/media/codec2/sfplugin/CCodecBufferChannel.cpp
+@@ -911,7 +911,18 @@ status_t CCodecBufferChannel::start(
+     uint32_t outputDelayValue = outputDelay ? outputDelay.value : 0;
+ 
+     size_t numInputSlots = inputDelayValue + pipelineDelayValue + kSmoothnessFactor;
+-    size_t numOutputSlots = outputDelayValue + kSmoothnessFactor;
++    size_t smoothnessFactor = kSmoothnessFactor;
++
++    if (outputFormat != nullptr) {
++        int32_t width = 0;
++        int32_t height = 0;
++        if (outputFormat->findInt32(KEY_HEIGHT, &height) &&
++                outputFormat->findInt32(KEY_WIDTH, &width) &&
++                width * height > 4096 * 2304) {
++            smoothnessFactor = 0;
++        }
++    }
++    size_t numOutputSlots = outputDelayValue + smoothnessFactor;
+ 
+     // TODO: get this from input format
+     bool secure = mComponent->getName().find(".secure") != std::string::npos;
+@@ -1611,9 +1622,19 @@ bool CCodecBufferChannel::handleWork(
+                             if (!output->buffers) {
+                                 return false;
+                             }
++
++                            int32_t width = 0;
++                            int32_t height = 0;
++                            size_t smoothnessFactor = kSmoothnessFactor;
++                            const sp<AMessage> bufOutFormat = output->buffers->dupFormat();
++                            if (bufOutFormat->findInt32(KEY_HEIGHT, &height) &&
++                                    bufOutFormat->findInt32(KEY_WIDTH, &width) &&
++                                    width * height > 4096 * 2304) {
++                                smoothnessFactor = 0;
++                            }
+                             output->outputDelay = outputDelay.value;
+-                            numOutputSlots = outputDelay.value +
+-                                             kSmoothnessFactor;
++                            numOutputSlots = outputDelay.value + smoothnessFactor;
++
+                             if (output->numSlots < numOutputSlots) {
+                                 output->numSlots = numOutputSlots;
+                                 if (output->buffers->isArrayMode()) {
+-- 
+2.31.0
+
+
+From 780d94cfdff631d44d83fbefd2cb1f38c603649f Mon Sep 17 00:00:00 2001
+From: Brijesh Patel <pbrijesh@codeaurora.org>
+Date: Wed, 25 Nov 2020 12:07:00 +0530
+Subject: [PATCH 18/23] codec2: Avoid invalid access to output format while
+ print
+
+- Once codec updates output format to client for encode usecase
+  which can later be modified. After calling onOutputBufferAvailable
+  codec2 should assume that it is not the only owner format object
+  and should avoid debug print which can dereference invalid objects.
+
+CRs-Fixed: 2796867
+Change-Id: I441c59f704306fa3aeece14043d2cc0c43da8fc5
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ media/codec2/sfplugin/CCodecBufferChannel.cpp | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/media/codec2/sfplugin/CCodecBufferChannel.cpp b/media/codec2/sfplugin/CCodecBufferChannel.cpp
+index 064a79fe83..a8b5ea9e7d 100644
+--- a/media/codec2/sfplugin/CCodecBufferChannel.cpp
++++ b/media/codec2/sfplugin/CCodecBufferChannel.cpp
+@@ -1739,7 +1739,10 @@ bool CCodecBufferChannel::handleWork(
+             outBuffer->meta()->setInt64("timeUs", timestamp.peek());
+             outBuffer->meta()->setInt32("flags", MediaCodec::BUFFER_FLAG_CODECCONFIG);
+             ALOGV("[%s] onWorkDone: csd index = %zu [%p]", mName, index, outBuffer.get());
+-
++            if (outputFormat) {
++                ALOGD("[%s] sending CSD : output format changed to %s",
++                      mName, outputFormat->debugString().c_str());
++            }
+             output.unlock();
+             mCallback->onOutputBufferAvailable(index, outBuffer);
+         } else {
+@@ -1781,7 +1784,7 @@ bool CCodecBufferChannel::handleWork(
+                 notifyClient,
+                 timestamp.peek(),
+                 flags,
+-                outputFormat,
++                (initData == nullptr ? outputFormat : nullptr),
+                 worklet->output.ordinal);
+     }
+     sendOutputBuffers();
+-- 
+2.31.0
+
+
+From 7dea32d9ba261b1108aec7ddabadc5e74e18009c Mon Sep 17 00:00:00 2001
+From: Jiajia Cong <jcong@codeaurora.org>
+Date: Wed, 2 Dec 2020 12:00:49 +0800
+Subject: [PATCH 19/23] codec2: fix issue in allocating too many 8k buffers
+
+default output delay is too large, in 8k use case, framework doesn't
+allow to use so much memory to allocate those 8k buffers.
+
+if exceeds max capacity and underlying buffer alloc fail. do not
+create MediaCodecBuffer holds a null underlying ABuffer. Otherwise,
+some MediaCodecBuffer APIs may access ABuffer (nullptr).
+
+CRs-Fixed: 2818716
+
+Change-Id: Ic8e33f6c27ee1c435bf0dc4bc09df87cb0ad3c3a
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ media/codec2/sfplugin/Codec2Buffer.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/media/codec2/sfplugin/Codec2Buffer.cpp b/media/codec2/sfplugin/Codec2Buffer.cpp
+index 19414a0a0c..77a567a954 100644
+--- a/media/codec2/sfplugin/Codec2Buffer.cpp
++++ b/media/codec2/sfplugin/Codec2Buffer.cpp
+@@ -678,6 +678,10 @@ sp<ConstGraphicBlockBuffer> ConstGraphicBlockBuffer::AllocateEmpty(
+     }
+     // NOTE: we currently only support YUV420 formats for byte-buffer mode.
+     sp<ABuffer> aBuffer(alloc(align(width, 16) * align(height, 16) * 3 / 2));
++    if (aBuffer == nullptr) {
++        ALOGD("%s: failed to allocate buffer", __func__);
++        return nullptr;
++    }
+     return new ConstGraphicBlockBuffer(
+             format,
+             aBuffer,
+-- 
+2.31.0
+
+
+From dd4bad6ed836bdd459fcac6008369525182ae84a Mon Sep 17 00:00:00 2001
+From: Uma Mehta <umamehta@codeaurora.org>
+Date: Fri, 10 Jul 2020 17:23:12 +0530
+Subject: [PATCH 20/23] codec2: Disable secure encoder test
+
+Added change to disable secure encoder VTS test.
+
+CRs-Fixed: 2714179
+bug: 160949249
+
+Change-Id: I00e0e45adf2719d25549ad89abe0ced6b52b50ce
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ .../functional/video/VtsHalMediaC2V1_0TargetVideoEncTest.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/media/codec2/hidl/1.0/vts/functional/video/VtsHalMediaC2V1_0TargetVideoEncTest.cpp b/media/codec2/hidl/1.0/vts/functional/video/VtsHalMediaC2V1_0TargetVideoEncTest.cpp
+index ecaf3a83a9..b1be4f1671 100644
+--- a/media/codec2/hidl/1.0/vts/functional/video/VtsHalMediaC2V1_0TargetVideoEncTest.cpp
++++ b/media/codec2/hidl/1.0/vts/functional/video/VtsHalMediaC2V1_0TargetVideoEncTest.cpp
+@@ -107,6 +107,11 @@ class Codec2VideoEncHidlTestBase : public ::testing::Test {
+         mOutputSize = 0u;
+         mTimestampDevTest = false;
+         if (mCompName == unknown_comp) mDisableTest = true;
++        C2SecureModeTuning secureModeTuning{};
++        mComponent->query({ &secureModeTuning }, {}, C2_MAY_BLOCK, nullptr);
++        if (secureModeTuning.value == C2Config::SM_READ_PROTECTED) {
++            mDisableTest = true;
++        }
+         if (mDisableTest) std::cout << "[   WARN   ] Test Disabled \n";
+     }
+ 
+-- 
+2.31.0
+
+
+From 5b26e35d84bd160a89648b8097a52d27ee67a40c Mon Sep 17 00:00:00 2001
+From: "ming.zhou" <ming.zhou@nxp.com>
+Date: Fri, 11 Oct 2019 11:14:07 +0800
+Subject: [PATCH 21/23] codec2: Fix software decoder display issue
+
+When play cts video video_decode_accuracy_and_capability-vp9_426x182_30fps.webm,
+gralloc buffer has slice height of 4 bytes. Destination buffer address of
+plane[u] and plane[v] are not equal to the calculated address by
+plane[y] + dstYStride * height.
+
+solve merge conflict with file media/codec2/components/gav1/C2SoftGav1Dec.cpp
+
+Change-Id: Ib8b283a0fb4bacb9b4f561d83b4d38727a3116d4
+Signed-off-by: ming.zhou <ming.zhou@nxp.com>
+Bug: 131844219
+Bug: 160760307
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ media/codec2/components/aom/C2SoftAomDec.cpp  | 43 ++++++-------
+ .../codec2/components/gav1/C2SoftGav1Dec.cpp  | 61 +++++++++----------
+ .../components/mpeg4_h263/C2SoftMpeg4Dec.cpp  | 25 ++++----
+ media/codec2/components/vpx/C2SoftVpxDec.cpp  | 51 ++++++++--------
+ 4 files changed, 90 insertions(+), 90 deletions(-)
+
+diff --git a/media/codec2/components/aom/C2SoftAomDec.cpp b/media/codec2/components/aom/C2SoftAomDec.cpp
+index c7046cb0bc..9ba3b697dd 100644
+--- a/media/codec2/components/aom/C2SoftAomDec.cpp
++++ b/media/codec2/components/aom/C2SoftAomDec.cpp
+@@ -506,30 +506,28 @@ void C2SoftAomDec::process(const std::unique_ptr<C2Work>& work,
+ }
+ 
+ static void copyOutputBufferToYuvPlanarFrame(
+-        uint8_t *dst, const uint8_t *srcY, const uint8_t *srcU, const uint8_t *srcV,
++        uint8_t *dstY, uint8_t *dstU, uint8_t *dstV,
++        const uint8_t *srcY, const uint8_t *srcU, const uint8_t *srcV,
+         size_t srcYStride, size_t srcUStride, size_t srcVStride,
+         size_t dstYStride, size_t dstUVStride,
+         uint32_t width, uint32_t height) {
+-    uint8_t* dstStart = dst;
+ 
+     for (size_t i = 0; i < height; ++i) {
+-        memcpy(dst, srcY, width);
++        memcpy(dstY, srcY, width);
+         srcY += srcYStride;
+-        dst += dstYStride;
++        dstY += dstYStride;
+     }
+ 
+-    dst = dstStart + dstYStride * height;
+     for (size_t i = 0; i < height / 2; ++i) {
+-         memcpy(dst, srcV, width / 2);
++        memcpy(dstV, srcV, width / 2);
+         srcV += srcVStride;
+-        dst += dstUVStride;
++        dstV += dstUVStride;
+     }
+ 
+-    dst = dstStart + (dstYStride * height) + (dstUVStride * height / 2);
+     for (size_t i = 0; i < height / 2; ++i) {
+-         memcpy(dst, srcU, width / 2);
++        memcpy(dstU, srcU, width / 2);
+         srcU += srcUStride;
+-        dst += dstUVStride;
++        dstU += dstUVStride;
+     }
+ }
+ 
+@@ -596,16 +594,12 @@ static void convertYUV420Planar16ToY410(uint32_t *dst,
+     return;
+ }
+ 
+-static void convertYUV420Planar16ToYUV420Planar(uint8_t *dst,
++static void convertYUV420Planar16ToYUV420Planar(
++        uint8_t *dstY, uint8_t *dstU, uint8_t *dstV,
+         const uint16_t *srcY, const uint16_t *srcU, const uint16_t *srcV,
+         size_t srcYStride, size_t srcUStride, size_t srcVStride,
+-        size_t dstYStride, size_t dstUVStride, size_t width, size_t height) {
+-
+-    uint8_t *dstY = (uint8_t *)dst;
+-    size_t dstYSize = dstYStride * height;
+-    size_t dstUVSize = dstUVStride * height / 2;
+-    uint8_t *dstV = dstY + dstYSize;
+-    uint8_t *dstU = dstV + dstUVSize;
++        size_t dstYStride, size_t dstUVStride,
++        size_t width, size_t height) {
+ 
+     for (size_t y = 0; y < height; ++y) {
+         for (size_t x = 0; x < width; ++x) {
+@@ -696,7 +690,9 @@ bool C2SoftAomDec::outputBuffer(
+           block->width(), block->height(), mWidth, mHeight,
+           (int)*(int64_t*)img->user_priv);
+ 
+-    uint8_t* dst = const_cast<uint8_t*>(wView.data()[C2PlanarLayout::PLANE_Y]);
++    uint8_t* dstY = const_cast<uint8_t*>(wView.data()[C2PlanarLayout::PLANE_Y]);
++    uint8_t* dstU = const_cast<uint8_t*>(wView.data()[C2PlanarLayout::PLANE_U]);
++    uint8_t* dstV = const_cast<uint8_t*>(wView.data()[C2PlanarLayout::PLANE_V]);
+     size_t srcYStride = img->stride[AOM_PLANE_Y];
+     size_t srcUStride = img->stride[AOM_PLANE_U];
+     size_t srcVStride = img->stride[AOM_PLANE_V];
+@@ -710,13 +706,14 @@ bool C2SoftAomDec::outputBuffer(
+         const uint16_t *srcV = (const uint16_t *)img->planes[AOM_PLANE_V];
+ 
+         if (format == HAL_PIXEL_FORMAT_RGBA_1010102) {
+-            convertYUV420Planar16ToY410((uint32_t *)dst, srcY, srcU, srcV, srcYStride / 2,
++            convertYUV420Planar16ToY410((uint32_t *)dstY, srcY, srcU, srcV, srcYStride / 2,
+                                     srcUStride / 2, srcVStride / 2,
+                                     dstYStride / sizeof(uint32_t),
+                                     mWidth, mHeight);
+         } else {
+-            convertYUV420Planar16ToYUV420Planar(dst, srcY, srcU, srcV, srcYStride / 2,
+-                                    srcUStride / 2, srcVStride / 2,
++            convertYUV420Planar16ToYUV420Planar(dstY, dstU, dstV,
++                                    srcY, srcU, srcV,
++                                    srcYStride / 2, srcUStride / 2, srcVStride / 2,
+                                     dstYStride, dstUVStride,
+                                     mWidth, mHeight);
+         }
+@@ -725,7 +722,7 @@ bool C2SoftAomDec::outputBuffer(
+         const uint8_t *srcU = (const uint8_t *)img->planes[AOM_PLANE_U];
+         const uint8_t *srcV = (const uint8_t *)img->planes[AOM_PLANE_V];
+         copyOutputBufferToYuvPlanarFrame(
+-                dst, srcY, srcU, srcV,
++                dstY, dstU, dstV, srcY, srcU, srcV,
+                 srcYStride, srcUStride, srcVStride,
+                 dstYStride, dstUVStride,
+                 mWidth, mHeight);
+diff --git a/media/codec2/components/gav1/C2SoftGav1Dec.cpp b/media/codec2/components/gav1/C2SoftGav1Dec.cpp
+index 120ba7a59a..a1929e7d5e 100644
+--- a/media/codec2/components/gav1/C2SoftGav1Dec.cpp
++++ b/media/codec2/components/gav1/C2SoftGav1Dec.cpp
+@@ -458,32 +458,28 @@ void C2SoftGav1Dec::process(const std::unique_ptr<C2Work> &work,
+   }
+ }
+ 
+-static void copyOutputBufferToYuvPlanarFrame(uint8_t *dst, const uint8_t *srcY,
+-                                             const uint8_t *srcU,
+-                                             const uint8_t *srcV, size_t srcYStride,
+-                                             size_t srcUStride, size_t srcVStride,
+-                                             size_t dstYStride, size_t dstUVStride,
+-                                             uint32_t width, uint32_t height) {
+-  uint8_t *const dstStart = dst;
++static void copyOutputBufferToYV12Frame(uint8_t *dstY, uint8_t *dstU, uint8_t *dstV,
++                                        const uint8_t *srcY, const uint8_t *srcU, const uint8_t *srcV,
++                                        size_t srcYStride, size_t srcUStride, size_t srcVStride,
++                                        size_t dstYStride, size_t dstUVStride,
++                                        uint32_t width, uint32_t height) {
+ 
+   for (size_t i = 0; i < height; ++i) {
+-    memcpy(dst, srcY, width);
++    memcpy(dstY, srcY, width);
+     srcY += srcYStride;
+-    dst += dstYStride;
++    dstY += dstYStride;
+   }
+ 
+-  dst = dstStart + dstYStride * height;
+   for (size_t i = 0; i < height / 2; ++i) {
+-    memcpy(dst, srcV, width / 2);
++    memcpy(dstV, srcV, width / 2);
+     srcV += srcVStride;
+-    dst += dstUVStride;
++    dstV += dstUVStride;
+   }
+ 
+-  dst = dstStart + (dstYStride * height) + (dstUVStride * height / 2);
+   for (size_t i = 0; i < height / 2; ++i) {
+-    memcpy(dst, srcU, width / 2);
++    memcpy(dstU, srcU, width / 2);
+     srcU += srcUStride;
+-    dst += dstUVStride;
++    dstU += dstUVStride;
+   }
+ }
+ 
+@@ -555,15 +551,11 @@ static void convertYUV420Planar16ToY410(uint32_t *dst, const uint16_t *srcY,
+ }
+ 
+ static void convertYUV420Planar16ToYUV420Planar(
+-    uint8_t *dst, const uint16_t *srcY, const uint16_t *srcU,
+-    const uint16_t *srcV, size_t srcYStride, size_t srcUStride,
+-    size_t srcVStride, size_t dstYStride, size_t dstUVStride,
++    uint8_t *dstY, uint8_t *dstU, uint8_t *dstV,
++    const uint16_t *srcY, const uint16_t *srcU, const uint16_t *srcV,
++    size_t srcYStride, size_t srcUStride, size_t srcVStride,
++    size_t dstYStride, size_t dstUVStride,
+     size_t width, size_t height) {
+-  uint8_t *dstY = (uint8_t *)dst;
+-  size_t dstYSize = dstYStride * height;
+-  size_t dstUVSize = dstUVStride * height / 2;
+-  uint8_t *dstV = dstY + dstYSize;
+-  uint8_t *dstU = dstV + dstUVSize;
+ 
+   for (size_t y = 0; y < height; ++y) {
+     for (size_t x = 0; x < width; ++x) {
+@@ -667,10 +659,13 @@ bool C2SoftGav1Dec::outputBuffer(const std::shared_ptr<C2BlockPool> &pool,
+   ALOGV("provided (%dx%d) required (%dx%d), out frameindex %d", block->width(),
+         block->height(), mWidth, mHeight, (int)buffer->user_private_data);
+ 
+-  uint8_t *dst = const_cast<uint8_t *>(wView.data()[C2PlanarLayout::PLANE_Y]);
++  uint8_t *dstY = const_cast<uint8_t *>(wView.data()[C2PlanarLayout::PLANE_Y]);
++  uint8_t *dstU = const_cast<uint8_t *>(wView.data()[C2PlanarLayout::PLANE_U]);
++  uint8_t *dstV = const_cast<uint8_t *>(wView.data()[C2PlanarLayout::PLANE_V]);
+   size_t srcYStride = buffer->stride[0];
+   size_t srcUStride = buffer->stride[1];
+   size_t srcVStride = buffer->stride[2];
++
+   C2PlanarLayout layout = wView.layout();
+   size_t dstYStride = layout.planes[C2PlanarLayout::PLANE_Y].rowInc;
+   size_t dstUVStride = layout.planes[C2PlanarLayout::PLANE_U].rowInc;
+@@ -682,20 +677,24 @@ bool C2SoftGav1Dec::outputBuffer(const std::shared_ptr<C2BlockPool> &pool,
+ 
+     if (format == HAL_PIXEL_FORMAT_RGBA_1010102) {
+       convertYUV420Planar16ToY410(
+-          (uint32_t *)dst, srcY, srcU, srcV, srcYStride / 2, srcUStride / 2,
++          (uint32_t *)dstY, srcY, srcU, srcV, srcYStride / 2, srcUStride / 2,
+           srcVStride / 2, dstYStride / sizeof(uint32_t), mWidth, mHeight);
+     } else {
+-      convertYUV420Planar16ToYUV420Planar(dst, srcY, srcU, srcV, srcYStride / 2,
+-                                          srcUStride / 2, srcVStride / 2,
+-                                          dstYStride, dstUVStride, mWidth, mHeight);
++      convertYUV420Planar16ToYUV420Planar(dstY, dstU, dstV,
++                                          srcY, srcU, srcV,
++                                          srcYStride / 2, srcUStride / 2, srcVStride / 2,
++                                          dstYStride, dstUVStride,
++                                          mWidth, mHeight);
+     }
+   } else {
+     const uint8_t *srcY = (const uint8_t *)buffer->plane[0];
+     const uint8_t *srcU = (const uint8_t *)buffer->plane[1];
+     const uint8_t *srcV = (const uint8_t *)buffer->plane[2];
+-    copyOutputBufferToYuvPlanarFrame(dst, srcY, srcU, srcV, srcYStride, srcUStride,
+-                                     srcVStride, dstYStride, dstUVStride,
+-                                     mWidth, mHeight);
++    copyOutputBufferToYV12Frame(dstY, dstU, dstV,
++                                srcY, srcU, srcV,
++                                srcYStride, srcUStride, srcVStride,
++                                dstYStride, dstUVStride,
++                                mWidth, mHeight);
+   }
+   finishWork(buffer->user_private_data, work, std::move(block));
+   block = nullptr;
+diff --git a/media/codec2/components/mpeg4_h263/C2SoftMpeg4Dec.cpp b/media/codec2/components/mpeg4_h263/C2SoftMpeg4Dec.cpp
+index 61b286cc0f..13cc0ec882 100644
+--- a/media/codec2/components/mpeg4_h263/C2SoftMpeg4Dec.cpp
++++ b/media/codec2/components/mpeg4_h263/C2SoftMpeg4Dec.cpp
+@@ -464,34 +464,34 @@ bool C2SoftMpeg4Dec::handleResChange(const std::unique_ptr<C2Work> &work) {
+ /* TODO: can remove temporary copy after library supports writing to display
+  * buffer Y, U and V plane pointers using stride info. */
+ static void copyOutputBufferToYuvPlanarFrame(
+-        uint8_t *dst, uint8_t *src,
++        uint8_t *dstY, uint8_t *dstU, uint8_t *dstV, uint8_t *src,
+         size_t dstYStride, size_t dstUVStride,
+         size_t srcYStride, uint32_t width,
+         uint32_t height) {
+     size_t srcUVStride = srcYStride / 2;
+     uint8_t *srcStart = src;
+-    uint8_t *dstStart = dst;
++
+     size_t vStride = align(height, 16);
+     for (size_t i = 0; i < height; ++i) {
+-         memcpy(dst, src, width);
++         memcpy(dstY, src, width);
+          src += srcYStride;
+-         dst += dstYStride;
++         dstY += dstYStride;
+     }
++
+     /* U buffer */
+     src = srcStart + vStride * srcYStride;
+-    dst = dstStart + (dstYStride * height) + (dstUVStride * height / 2);
+     for (size_t i = 0; i < height / 2; ++i) {
+-         memcpy(dst, src, width / 2);
++         memcpy(dstU, src, width / 2);
+          src += srcUVStride;
+-         dst += dstUVStride;
++         dstU += dstUVStride;
+     }
++
+     /* V buffer */
+     src = srcStart + vStride * srcYStride * 5 / 4;
+-    dst = dstStart + (dstYStride * height);
+     for (size_t i = 0; i < height / 2; ++i) {
+-         memcpy(dst, src, width / 2);
++         memcpy(dstV, src, width / 2);
+          src += srcUVStride;
+-         dst += dstUVStride;
++         dstV += dstUVStride;
+     }
+ }
+ 
+@@ -672,11 +672,14 @@ void C2SoftMpeg4Dec::process(
+         }
+ 
+         uint8_t *outputBufferY = wView.data()[C2PlanarLayout::PLANE_Y];
++        uint8_t *outputBufferU = wView.data()[C2PlanarLayout::PLANE_U];
++        uint8_t *outputBufferV = wView.data()[C2PlanarLayout::PLANE_V];
++
+         C2PlanarLayout layout = wView.layout();
+         size_t dstYStride = layout.planes[C2PlanarLayout::PLANE_Y].rowInc;
+         size_t dstUVStride = layout.planes[C2PlanarLayout::PLANE_U].rowInc;
+         (void)copyOutputBufferToYuvPlanarFrame(
+-                outputBufferY,
++                outputBufferY, outputBufferU, outputBufferV,
+                 mOutputBuffer[mNumSamplesOutput & 1],
+                 dstYStride, dstUVStride,
+                 align(mWidth, 16), mWidth, mHeight);
+diff --git a/media/codec2/components/vpx/C2SoftVpxDec.cpp b/media/codec2/components/vpx/C2SoftVpxDec.cpp
+index 3eef1e3939..91238e8e7d 100644
+--- a/media/codec2/components/vpx/C2SoftVpxDec.cpp
++++ b/media/codec2/components/vpx/C2SoftVpxDec.cpp
+@@ -631,31 +631,30 @@ void C2SoftVpxDec::process(
+ }
+ 
+ static void copyOutputBufferToYuvPlanarFrame(
+-        uint8_t *dst, const uint8_t *srcY, const uint8_t *srcU, const uint8_t *srcV,
++        uint8_t *dstY, uint8_t *dstU, uint8_t *dstV,
++        const uint8_t *srcY, const uint8_t *srcU, const uint8_t *srcV,
+         size_t srcYStride, size_t srcUStride, size_t srcVStride,
+         size_t dstYStride, size_t dstUVStride,
+         uint32_t width, uint32_t height) {
+-    uint8_t *dstStart = dst;
+ 
+     for (size_t i = 0; i < height; ++i) {
+-         memcpy(dst, srcY, width);
++         memcpy(dstY, srcY, width);
+          srcY += srcYStride;
+-         dst += dstYStride;
++         dstY += dstYStride;
+     }
+ 
+-    dst = dstStart + dstYStride * height;
+     for (size_t i = 0; i < height / 2; ++i) {
+-         memcpy(dst, srcV, width / 2);
++         memcpy(dstV, srcV, width / 2);
+          srcV += srcVStride;
+-         dst += dstUVStride;
++         dstV += dstUVStride;
+     }
+ 
+-    dst = dstStart + (dstYStride * height) + (dstUVStride * height / 2);
+     for (size_t i = 0; i < height / 2; ++i) {
+-         memcpy(dst, srcU, width / 2);
++         memcpy(dstU, srcU, width / 2);
+          srcU += srcUStride;
+-         dst += dstUVStride;
++         dstU += dstUVStride;
+     }
++
+ }
+ 
+ static void convertYUV420Planar16ToY410(uint32_t *dst,
+@@ -721,16 +720,12 @@ static void convertYUV420Planar16ToY410(uint32_t *dst,
+     return;
+ }
+ 
+-static void convertYUV420Planar16ToYUV420Planar(uint8_t *dst,
++static void convertYUV420Planar16ToYUV420Planar(
++        uint8_t *dstY, uint8_t *dstU, uint8_t *dstV,
+         const uint16_t *srcY, const uint16_t *srcU, const uint16_t *srcV,
+         size_t srcYStride, size_t srcUStride, size_t srcVStride,
+-        size_t dstYStride, size_t dstUVStride, size_t width, size_t height) {
+-
+-    uint8_t *dstY = (uint8_t *)dst;
+-    size_t dstYSize = dstYStride * height;
+-    size_t dstUVSize = dstUVStride * height / 2;
+-    uint8_t *dstV = dstY + dstYSize;
+-    uint8_t *dstU = dstV + dstUVSize;
++        size_t dstYStride, size_t dstUVStride,
++        size_t width, size_t height) {
+ 
+     for (size_t y = 0; y < height; ++y) {
+         for (size_t x = 0; x < width; ++x) {
+@@ -823,7 +818,10 @@ status_t C2SoftVpxDec::outputBuffer(
+            block->width(), block->height(), mWidth, mHeight,
+            ((c2_cntr64_t *)img->user_priv)->peekll());
+ 
+-    uint8_t *dst = const_cast<uint8_t *>(wView.data()[C2PlanarLayout::PLANE_Y]);
++    uint8_t *dstY = const_cast<uint8_t *>(wView.data()[C2PlanarLayout::PLANE_Y]);
++    uint8_t *dstU = const_cast<uint8_t *>(wView.data()[C2PlanarLayout::PLANE_U]);
++    uint8_t *dstV = const_cast<uint8_t *>(wView.data()[C2PlanarLayout::PLANE_V]);
++
+     size_t srcYStride = img->stride[VPX_PLANE_Y];
+     size_t srcUStride = img->stride[VPX_PLANE_U];
+     size_t srcVStride = img->stride[VPX_PLANE_V];
+@@ -842,18 +840,18 @@ status_t C2SoftVpxDec::outputBuffer(
+             constexpr size_t kHeight = 64;
+             for (; i < mHeight; i += kHeight) {
+                 queue->entries.push_back(
+-                        [dst, srcY, srcU, srcV,
++                        [dstY, srcY, srcU, srcV,
+                          srcYStride, srcUStride, srcVStride, dstYStride,
+                          width = mWidth, height = std::min(mHeight - i, kHeight)] {
+                             convertYUV420Planar16ToY410(
+-                                    (uint32_t *)dst, srcY, srcU, srcV, srcYStride / 2,
++                                    (uint32_t *)dstY, srcY, srcU, srcV, srcYStride / 2,
+                                     srcUStride / 2, srcVStride / 2, dstYStride / sizeof(uint32_t),
+                                     width, height);
+                         });
+                 srcY += srcYStride / 2 * kHeight;
+                 srcU += srcUStride / 2 * (kHeight / 2);
+                 srcV += srcVStride / 2 * (kHeight / 2);
+-                dst += dstYStride * kHeight;
++                dstY += dstYStride * kHeight;
+             }
+             CHECK_EQ(0u, queue->numPending);
+             queue->numPending = queue->entries.size();
+@@ -862,8 +860,9 @@ status_t C2SoftVpxDec::outputBuffer(
+                 queue.waitForCondition(queue->cond);
+             }
+         } else {
+-            convertYUV420Planar16ToYUV420Planar(dst, srcY, srcU, srcV, srcYStride / 2,
+-                                                srcUStride / 2, srcVStride / 2,
++            convertYUV420Planar16ToYUV420Planar(dstY, dstU, dstV,
++                                                srcY, srcU, srcV,
++                                                srcYStride / 2, srcUStride / 2, srcVStride / 2,
+                                                 dstYStride, dstUVStride,
+                                                 mWidth, mHeight);
+         }
+@@ -871,8 +870,10 @@ status_t C2SoftVpxDec::outputBuffer(
+         const uint8_t *srcY = (const uint8_t *)img->planes[VPX_PLANE_Y];
+         const uint8_t *srcU = (const uint8_t *)img->planes[VPX_PLANE_U];
+         const uint8_t *srcV = (const uint8_t *)img->planes[VPX_PLANE_V];
++
+         copyOutputBufferToYuvPlanarFrame(
+-                dst, srcY, srcU, srcV,
++                dstY, dstU, dstV,
++                srcY, srcU, srcV,
+                 srcYStride, srcUStride, srcVStride,
+                 dstYStride, dstUVStride,
+                 mWidth, mHeight);
+-- 
+2.31.0
+
+
+From de9bf20f7487d6b64d4e939700f56805dd5d96ae Mon Sep 17 00:00:00 2001
+From: Lajos Molnar <lajos@google.com>
+Date: Sun, 7 Feb 2021 13:06:10 -0800
+Subject: [PATCH 22/23] CCodec: Make HDR10/+ support detection logic work for
+ encoders
+
+This allows MediaCodecInfo to advertise HDR10/+ profile support.
+
+Bug: 158284167
+Change-Id: I24474bba3873eeff30037dedc8837f96855c93cc
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ media/codec2/sfplugin/Codec2InfoBuilder.cpp | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/media/codec2/sfplugin/Codec2InfoBuilder.cpp b/media/codec2/sfplugin/Codec2InfoBuilder.cpp
+index b11224907e..a26f89ed6e 100644
+--- a/media/codec2/sfplugin/Codec2InfoBuilder.cpp
++++ b/media/codec2/sfplugin/Codec2InfoBuilder.cpp
+@@ -103,11 +103,16 @@ void addSupportedProfileLevels(
+     c2_status_t err1 = intf->querySupportedParams(&paramDescs);
+     if (err1 == C2_OK) {
+         for (const std::shared_ptr<C2ParamDescriptor> &desc : paramDescs) {
+-            switch ((uint32_t)desc->index()) {
+-            case C2StreamHdr10PlusInfo::output::PARAM_TYPE:
++            C2Param::Type type = desc->index();
++            // only consider supported parameters on raw ports
++            if (!(encoder ? type.forInput() : type.forOutput())) {
++                continue;
++            }
++            switch (type.coreIndex()) {
++            case C2StreamHdr10PlusInfo::CORE_INDEX:
+                 supportsHdr10Plus = true;
+                 break;
+-            case C2StreamHdrStaticInfo::output::PARAM_TYPE:
++            case C2StreamHdrStaticInfo::CORE_INDEX:
+                 supportsHdr = true;
+                 break;
+             default:
+-- 
+2.31.0
+
+
+From d84297edfcc53edc5b9d50651a862e29f0f18c40 Mon Sep 17 00:00:00 2001
+From: Wonsik Kim <wonsik@google.com>
+Date: Mon, 1 Mar 2021 16:40:33 -0800
+Subject: [PATCH 23/23] CCodec: Move lower-res workaround to C2OMXNode
+
+Bug: 177496388
+Bug: 176218347
+Test: slow-motion recording
+Test: atest CtsCameraTestCases:RecordingTest
+Change-Id: If319a8c0cea93d92688b7df800a232dfe7797c30
+(cherry picked from commit 34d6601898a64ae50d0c18017aa8917ddaf91e3b)
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ media/codec2/sfplugin/C2OMXNode.cpp | 26 +++++++++++++++++---------
+ media/codec2/sfplugin/CCodec.cpp    | 21 ++++++++-------------
+ 2 files changed, 25 insertions(+), 22 deletions(-)
+
+diff --git a/media/codec2/sfplugin/C2OMXNode.cpp b/media/codec2/sfplugin/C2OMXNode.cpp
+index dd1f4858a5..ab73245f78 100644
+--- a/media/codec2/sfplugin/C2OMXNode.cpp
++++ b/media/codec2/sfplugin/C2OMXNode.cpp
+@@ -209,15 +209,23 @@ status_t C2OMXNode::getParameter(OMX_INDEXTYPE index, void *params, size_t size)
+ 
+             pDef->nBufferCountActual = 16;
+ 
+-            std::shared_ptr<Codec2Client::Component> comp = mComp.lock();
+-            C2PortActualDelayTuning::input inputDelay(0);
+-            C2ActualPipelineDelayTuning pipelineDelay(0);
+-            c2_status_t c2err = comp->query(
+-                    {&inputDelay, &pipelineDelay}, {}, C2_DONT_BLOCK, nullptr);
+-            if (c2err == C2_OK || c2err == C2_BAD_INDEX) {
+-                pDef->nBufferCountActual = 4;
+-                pDef->nBufferCountActual += (inputDelay ? inputDelay.value : 0u);
+-                pDef->nBufferCountActual += (pipelineDelay ? pipelineDelay.value : 0u);
++            // WORKAROUND: having more slots improve performance while consuming
++            // more memory. This is a temporary workaround to reduce memory for
++            // larger-than-4K scenario.
++            if (mWidth * mHeight > 4096 * 2340) {
++                std::shared_ptr<Codec2Client::Component> comp = mComp.lock();
++                C2PortActualDelayTuning::input inputDelay(0);
++                C2ActualPipelineDelayTuning pipelineDelay(0);
++                c2_status_t c2err = C2_NOT_FOUND;
++                if (comp) {
++                    c2err = comp->query(
++                            {&inputDelay, &pipelineDelay}, {}, C2_DONT_BLOCK, nullptr);
++                }
++                if (c2err == C2_OK || c2err == C2_BAD_INDEX) {
++                    pDef->nBufferCountActual = 4;
++                    pDef->nBufferCountActual += (inputDelay ? inputDelay.value : 0u);
++                    pDef->nBufferCountActual += (pipelineDelay ? pipelineDelay.value : 0u);
++                }
+             }
+ 
+             pDef->eDomain = OMX_PortDomainVideo;
+diff --git a/media/codec2/sfplugin/CCodec.cpp b/media/codec2/sfplugin/CCodec.cpp
+index 55ff18f4a2..e8ff155ae8 100644
+--- a/media/codec2/sfplugin/CCodec.cpp
++++ b/media/codec2/sfplugin/CCodec.cpp
+@@ -248,19 +248,14 @@ public:
+         }
+ 
+         size_t numSlots = 16;
+-        // WORKAROUND: having more slots improve performance while consuming
+-        // more memory. This is a temporary workaround to reduce memory for
+-        // larger-than-4K scenario.
+-        if (mWidth * mHeight > 4096 * 2340) {
+-            constexpr OMX_U32 kPortIndexInput = 0;
+-
+-            OMX_PARAM_PORTDEFINITIONTYPE param;
+-            param.nPortIndex = kPortIndexInput;
+-            status_t err = mNode->getParameter(OMX_IndexParamPortDefinition,
+-                                               &param, sizeof(param));
+-            if (err == OK) {
+-                numSlots = param.nBufferCountActual;
+-            }
++        constexpr OMX_U32 kPortIndexInput = 0;
++
++        OMX_PARAM_PORTDEFINITIONTYPE param;
++        param.nPortIndex = kPortIndexInput;
++        status_t err = mNode->getParameter(OMX_IndexParamPortDefinition,
++                                           &param, sizeof(param));
++        if (err == OK) {
++            numSlots = param.nBufferCountActual;
+         }
+ 
+         for (size_t i = 0; i < numSlots; ++i) {
+-- 
+2.31.0
+
