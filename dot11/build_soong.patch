@@ -1,7 +1,7 @@
 From 8b6788014957ef2e840948783c7b867afd16dba3 Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Thu, 1 Apr 2021 17:54:41 +0800
-Subject: [PATCH 1/4] Revert "soong: use -mcpu=cortex-a55 for kryo300 and
+Subject: [PATCH 1/5] Revert "soong: use -mcpu=cortex-a55 for kryo300 and
  kryo385"
 
 This reverts commit 38c1d62c4656cecf70cca9f8537f0073f3e731d1.
@@ -84,7 +84,7 @@ index 8e90ce98..d37e4862 100644
 From 092a0e806c77ed25f418db45bc0bc37e83b26b40 Mon Sep 17 00:00:00 2001
 From: Akash <akashniki@gmail.com>
 Date: Sun, 17 May 2020 10:06:20 +0200
-Subject: [PATCH 2/4] soong: Disable sandbox
+Subject: [PATCH 2/5] soong: Disable sandbox
 
 AOSP compiler seems to ignore it anyhow. Disabling it silences the following warning:
 
@@ -115,7 +115,7 @@ index 2de772b0..4874c157 100644
 From 6d0a629fb634b8a7cf1d94a4b44af9136d89d1c1 Mon Sep 17 00:00:00 2001
 From: Daniel Micay <danielmicay@gmail.com>
 Date: Thu, 23 Apr 2020 16:34:04 -0400
-Subject: [PATCH 3/4] use SCHED_BATCH for the build
+Subject: [PATCH 3/5] use SCHED_BATCH for the build
 
 Signed-off-by: Albert I <kras@raphielgang.org>
 ---
@@ -142,7 +142,7 @@ index c1c236b9..c2b21aaa 100755
 From 06c22ce2f88c404cc933d06b147cb9aeb5c68cad Mon Sep 17 00:00:00 2001
 From: Raphiel Rollerscaperers <rapherion@raphielgang.org>
 Date: Wed, 6 Jan 2021 20:53:21 +0700
-Subject: [PATCH 4/4] Remove workaround for Qualcomm Kryo 385
+Subject: [PATCH 4/5] Remove workaround for Qualcomm Kryo 385
 
 Kryo 385 have Cortex-A55 as little core and Cortex-A75 without dot
 product as big core.
@@ -232,6 +232,39 @@ index d37e4862..a5ec9f9d 100644
  		"exynos-m1":      "${config.ArmClangCortexA53Cflags}",
  		"exynos-m2":      "${config.ArmClangCortexA53Cflags}",
  	}
+-- 
+2.31.0
+
+
+From c040157b61a6d18fbe97c75d05ff7946ff557b9f Mon Sep 17 00:00:00 2001
+From: Stephen Hines <srhines@google.com>
+Date: Tue, 16 Jun 2020 02:40:40 -0700
+Subject: [PATCH 5/5] Prefer armv8.2-a to armv8.2a for GNU as compatibility
+
+There are still out-of-tree users of `-fno-integrated-as`, which will
+have issues without the hyphen.
+
+Bug: http://b/158191033
+Test: ./build.py
+Change-Id: I44b68ab5b65a68df3993f38b99662178915e9be2
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ cc/config/arm64_device.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/cc/config/arm64_device.go b/cc/config/arm64_device.go
+index 94db707d..915e7a2d 100644
+--- a/cc/config/arm64_device.go
++++ b/cc/config/arm64_device.go
+@@ -32,7 +32,7 @@ var (
+ 			"-march=armv8-a",
+ 		},
+ 		"armv8-2a": []string{
+-			"-march=armv8.2a",
++			"-march=armv8.2-a",
+ 		},
+ 	}
+ 
 -- 
 2.31.0
 
