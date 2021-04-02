@@ -1,7 +1,7 @@
 From 3a74ba5355de1c3038ec2dc05b8283133ccff811 Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Sun, 28 Mar 2021 15:35:49 +0800
-Subject: [PATCH 1/5] Revert "InputDispatcher: On keypress, deliver keycode to
+Subject: [PATCH 1/8] Revert "InputDispatcher: On keypress, deliver keycode to
  pokeUserActivity"
 
 This reverts commit 50d2a912fe5a79e359522c5f7bf3f86e933a27ea.
@@ -158,7 +158,7 @@ index 4cb083d4f..667af9bbd 100644
 From d4f15701e2c6f951549becf924792917306f592d Mon Sep 17 00:00:00 2001
 From: Adithya R <gh0strider.2k18.reborn@gmail.com>
 Date: Mon, 18 Jan 2021 20:40:52 +0530
-Subject: [PATCH 2/5] InputDispatcher: extend "do not freeze recent on event
+Subject: [PATCH 2/8] InputDispatcher: extend "do not freeze recent on event
  from FOD" to side FP
 
 fixes this issue on devices like surya
@@ -190,7 +190,7 @@ index fd910b46b..b025989d3 100644
 From ec41140fd5c6e20f787bf952439def18599c1af9 Mon Sep 17 00:00:00 2001
 From: Sandepp Sethi <adeveloper79@gmail.com>
 Date: Tue, 2 Mar 2021 08:20:02 +0000
-Subject: [PATCH 3/5] InputDispatcher: extend "do not freeze recent on event
+Subject: [PATCH 3/8] InputDispatcher: extend "do not freeze recent on event
  from FOD and side FP" to xiaomi-touch event
 
 fixes ANR/Scrolling issues on devices like apollo/pro
@@ -223,7 +223,7 @@ index b025989d3..fc575cdce 100644
 From e26b72ce8d6ae7bd00db1420a1d39c64c530d06e Mon Sep 17 00:00:00 2001
 From: Yiwei Zhang <zzyiwei@google.com>
 Date: Fri, 14 Aug 2020 11:55:18 -0700
-Subject: [PATCH 4/5] OpenGL: fix initializeAnglePlatform with built-in ANGLE
+Subject: [PATCH 4/8] OpenGL: fix initializeAnglePlatform with built-in ANGLE
  driver
 
 When ANGLE namespace doesn't exist and initializeAnglePlatform is
@@ -293,7 +293,7 @@ index 97dc0f137..f82c2a4ee 100644
 From 8431a3780c241a2b1176988501205faa398d93d6 Mon Sep 17 00:00:00 2001
 From: Tim Van Patten <timvp@google.com>
 Date: Tue, 2 Mar 2021 19:24:29 -0700
-Subject: [PATCH 5/5] Read ro.hardware.egl for ANGLE's filename
+Subject: [PATCH 5/8] Read ro.hardware.egl for ANGLE's filename
 
 The ANGLE shared object filename is currently hardcoded to
 libGLESv2_angle.so, which prevents OEMs from specifying their own
@@ -383,6 +383,272 @@ index f82c2a4ee..d98c1ba1f 100644
      }
  
      angleGetDisplayPlatform =
+-- 
+2.31.0
+
+
+From 792422f45a6d207e0192bdd18e56a122cbcf075b Mon Sep 17 00:00:00 2001
+From: Snild Dolkow <snild@sony.com>
+Date: Fri, 22 Jan 2021 14:42:08 +0100
+Subject: [PATCH 6/8] Ensure that expected present time is in the future
+
+onMessageInvalidate() sets mExpectedPresentTime to a value originating
+from the vsync event that scheduled it. If handling of the invalidate
+is delayed, this value will be in the past, which is clearly not a
+plausible present time. Because of this, queued frames may incorrectly
+be ignored as "too early".
+
+This has caused problems in screen-on animations: even though the first
+frame is drawn and ready, SurfaceFlinger shows an old frame. This looks
+particularly bad with a fade-from-black animation: the old frame flashes
+by before the first frame of the animation shows.
+
+Here's an example timeline of how this problem could manifest:
+
+ 1000 ms    INVALIDATE queued with expectedVSyncTimestamp = 1010ms
+ 1013 ms    SF calls setPowerMode()
+ 1014 ms    SystemUI queues new NotificationShade frame
+ 1255 ms    setPowerMode() returns; invalidate can now be handled
+ 1256 ms    invalidate runs; mExpectedPresentTime set to 1010ms
+ 1257 ms    handlePageFlip() skips NotificationShade frame; "too early"
+ 1259 ms    refresh runs, composits prehistoric NotificationShade frame
+
+It's a bit of a race: if SystemUI manages to queue its new frame before
+the INVALIDATE message's timestamp, there won't be a problem.
+
+To solve this, let's check that the expected present time is in the
+future, and pick the nearest future vsync point if it's not. In order
+to not break frame miss detection, mScheduledPresentTime is introduced
+and used instead of mExpectedPresentTime for jank calculations.
+
+Fixes: 178415552
+Test: manual on Xperia device; flash of old frame is gone
+Test: compiles on aosp/redfin
+Change-Id: I095f1dd08374fd1d14552cd1af90d95e9718b4dd
+Merged-In: I095f1dd08374fd1d14552cd1af90d95e9718b4dd
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ services/surfaceflinger/SurfaceFlinger.cpp | 12 +++++++++---
+ services/surfaceflinger/SurfaceFlinger.h   |  1 +
+ 2 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/services/surfaceflinger/SurfaceFlinger.cpp b/services/surfaceflinger/SurfaceFlinger.cpp
+index f87501c34..e503de2dd 100644
+--- a/services/surfaceflinger/SurfaceFlinger.cpp
++++ b/services/surfaceflinger/SurfaceFlinger.cpp
+@@ -1861,8 +1861,14 @@ void SurfaceFlinger::onMessageInvalidate(nsecs_t expectedVSyncTime) {
+     // calculate the expected present time once and use the cached
+     // value throughout this frame to make sure all layers are
+     // seeing this same value.
+-    const nsecs_t lastExpectedPresentTime = mExpectedPresentTime.load();
+-    mExpectedPresentTime = expectedVSyncTime;
++    if (expectedVSyncTime >= frameStart) {
++        mExpectedPresentTime = expectedVSyncTime;
++    } else {
++        mExpectedPresentTime = mScheduler->getDispSyncExpectedPresentTime(frameStart);
++    }
++
++    const nsecs_t lastScheduledPresentTime = mScheduledPresentTime;
++    mScheduledPresentTime = expectedVSyncTime;
+ 
+     // When Backpressure propagation is enabled we want to give a small grace period
+     // for the present fence to fire instead of just giving up on this frame to handle cases
+@@ -1892,7 +1898,7 @@ void SurfaceFlinger::onMessageInvalidate(nsecs_t expectedVSyncTime) {
+     const TracedOrdinal<bool> frameMissed = {"PrevFrameMissed",
+                                              framePending ||
+                                                      (previousPresentTime >= 0 &&
+-                                                      (lastExpectedPresentTime <
++                                                      (lastScheduledPresentTime <
+                                                        previousPresentTime - frameMissedSlop))};
+     const TracedOrdinal<bool> hwcFrameMissed = {"PrevHwcFrameMissed",
+                                                 mHadDeviceComposition && frameMissed};
+diff --git a/services/surfaceflinger/SurfaceFlinger.h b/services/surfaceflinger/SurfaceFlinger.h
+index 222d6c751..64d1a4c8f 100644
+--- a/services/surfaceflinger/SurfaceFlinger.h
++++ b/services/surfaceflinger/SurfaceFlinger.h
+@@ -1217,6 +1217,7 @@ private:
+     std::unique_ptr<scheduler::RefreshRateStats> mRefreshRateStats;
+ 
+     std::atomic<nsecs_t> mExpectedPresentTime = 0;
++    nsecs_t mScheduledPresentTime = 0;
+     hal::Vsync mHWCVsyncPendingState = hal::Vsync::DISABLE;
+ 
+     /* ------------------------------------------------------------------------
+-- 
+2.31.0
+
+
+From 1951ac840241bdc3492e4f7a4a822589017707ca Mon Sep 17 00:00:00 2001
+From: Ady Abraham <adyabr@google.com>
+Date: Fri, 13 Nov 2020 12:43:39 -0800
+Subject: [PATCH 7/8] SurfaceFlinger: VSyncPredictor should be robust with
+ inconsistent vsyncs
+
+If VSyncPredictor gets an invalid timestamp, it might be accepted as
+a correct one, and then all the other correct timestamps will become
+incorrect for VSyncPredictor leading to rejecting all the correct
+timestamps followed by a one off inconsistent vsync.
+
+Bug: 173235499
+Bug: 177484301
+Test: SF unit tests (+1 new)
+Change-Id: I192b917196c727b9a97a0d18bae160467f75722d
+Merged-In: I192b917196c727b9a97a0d18bae160467f75722d
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ .../surfaceflinger/Scheduler/VSyncPredictor.cpp    |  8 ++++++--
+ .../tests/unittests/VSyncPredictorTest.cpp         | 14 ++++++++++++++
+ 2 files changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/services/surfaceflinger/Scheduler/VSyncPredictor.cpp b/services/surfaceflinger/Scheduler/VSyncPredictor.cpp
+index 61f3fbbdf..708a5b87b 100644
+--- a/services/surfaceflinger/Scheduler/VSyncPredictor.cpp
++++ b/services/surfaceflinger/Scheduler/VSyncPredictor.cpp
+@@ -78,8 +78,12 @@ bool VSyncPredictor::addVsyncTimestamp(nsecs_t timestamp) {
+ 
+     if (!validate(timestamp)) {
+         // VSR could elect to ignore the incongruent timestamp or resetModel(). If ts is ignored,
+-        // don't insert this ts into mTimestamps ringbuffer.
+-        if (!mTimestamps.empty()) {
++        // don't insert this ts into mTimestamps ringbuffer. If we are still
++        // in the learning phase we should just clear all timestamps and start
++        // over.
++        if (mTimestamps.size() < kMinimumSamplesForPrediction) {
++            clearTimestamps();
++        } else if (!mTimestamps.empty()) {
+             mKnownTimestamp =
+                     std::max(timestamp, *std::max_element(mTimestamps.begin(), mTimestamps.end()));
+         } else {
+diff --git a/services/surfaceflinger/tests/unittests/VSyncPredictorTest.cpp b/services/surfaceflinger/tests/unittests/VSyncPredictorTest.cpp
+index d4cd11dbe..5e5d51c99 100644
+--- a/services/surfaceflinger/tests/unittests/VSyncPredictorTest.cpp
++++ b/services/surfaceflinger/tests/unittests/VSyncPredictorTest.cpp
+@@ -450,6 +450,20 @@ TEST_F(VSyncPredictorTest, aPhoneThatHasBeenAroundAWhileCanStillComputePeriod) {
+     EXPECT_THAT(intercept, Eq(0));
+ }
+ 
++TEST_F(VSyncPredictorTest, InconsistentVsyncValueIsFlushedEventually) {
++    EXPECT_TRUE(tracker.addVsyncTimestamp(600));
++    EXPECT_TRUE(tracker.needsMoreSamples());
++
++    EXPECT_FALSE(tracker.addVsyncTimestamp(mNow += mPeriod));
++
++    for (auto i = 0u; i < kMinimumSamplesForPrediction; i++) {
++        EXPECT_TRUE(tracker.needsMoreSamples());
++        EXPECT_TRUE(tracker.addVsyncTimestamp(mNow += mPeriod));
++    }
++
++    EXPECT_FALSE(tracker.needsMoreSamples());
++}
++
+ } // namespace android::scheduler
+ 
+ // TODO(b/129481165): remove the #pragma below and fix conversion issues
+-- 
+2.31.0
+
+
+From ee308dc7bb28ab80589ee994373fdb9cc544df5f Mon Sep 17 00:00:00 2001
+From: Steven Moreland <smoreland@google.com>
+Date: Sat, 16 Jan 2021 02:39:45 +0000
+Subject: [PATCH 8/8] libbinder - avoid pthread_cond_broadcast per call
+
+Because it uses:
+- 0.4% of system_server CPU time
+- 1% of com.android.bluetooth
+- 0.8% of com.android.phone
+
+This call is used to implement
+IPCThreadState::blockUntilThreadAvailable, but this API is actually only
+used by WatchDog.java, and due to the locking we have in place here, we
+have more information than pthread does internally to tell it when a
+broadcast would actually be useful.
+
+Future considerations: this API is actually broken in the case of poll
+calls or if too many userspace threads manually call joinRpcThreadpool.
+We could move the binder part of WatchDog.java into a separate process
+and completely remove all of the associated infrastructure. An external
+process could call pingBinder (or similar) on different services. This
+would have the same effect, but it would use the existing path of
+processing a transaction in order to detect deadlocks.
+
+Bug: 168806193
+Test: boot, manually check how often this gets called now (only when
+    the binder threadpool is saturated when this is called, so at most
+    once/30 seconds given WatchDog's current implementation)
+Change-Id: I44f8ff0d8ca2cdf236a9fa3ad1e3a0241663bfcd
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ libs/binder/IPCThreadState.cpp            | 9 ++++++++-
+ libs/binder/ProcessState.cpp              | 1 +
+ libs/binder/include/binder/ProcessState.h | 5 ++++-
+ 3 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/libs/binder/IPCThreadState.cpp b/libs/binder/IPCThreadState.cpp
+index 847b73ad7..e5b22f0c8 100644
+--- a/libs/binder/IPCThreadState.cpp
++++ b/libs/binder/IPCThreadState.cpp
+@@ -481,12 +481,14 @@ void IPCThreadState::flushCommands()
+ void IPCThreadState::blockUntilThreadAvailable()
+ {
+     pthread_mutex_lock(&mProcess->mThreadCountLock);
++    mProcess->mWaitingForThreads++;
+     while (mProcess->mExecutingThreadsCount >= mProcess->mMaxThreads) {
+         ALOGW("Waiting for thread to be free. mExecutingThreadsCount=%lu mMaxThreads=%lu\n",
+                 static_cast<unsigned long>(mProcess->mExecutingThreadsCount),
+                 static_cast<unsigned long>(mProcess->mMaxThreads));
+         pthread_cond_wait(&mProcess->mThreadCountDecrement, &mProcess->mThreadCountLock);
+     }
++    mProcess->mWaitingForThreads--;
+     pthread_mutex_unlock(&mProcess->mThreadCountLock);
+ }
+ 
+@@ -526,7 +528,12 @@ status_t IPCThreadState::getAndExecuteCommand()
+             }
+             mProcess->mStarvationStartTimeMs = 0;
+         }
+-        pthread_cond_broadcast(&mProcess->mThreadCountDecrement);
++
++        // Cond broadcast can be expensive, so don't send it every time a binder
++        // call is processed. b/168806193
++        if (mProcess->mWaitingForThreads > 0) {
++            pthread_cond_broadcast(&mProcess->mThreadCountDecrement);
++        }
+         pthread_mutex_unlock(&mProcess->mThreadCountLock);
+     }
+ 
+diff --git a/libs/binder/ProcessState.cpp b/libs/binder/ProcessState.cpp
+index 4b773e816..da4351551 100644
+--- a/libs/binder/ProcessState.cpp
++++ b/libs/binder/ProcessState.cpp
+@@ -381,6 +381,7 @@ ProcessState::ProcessState(const char *driver)
+     , mThreadCountLock(PTHREAD_MUTEX_INITIALIZER)
+     , mThreadCountDecrement(PTHREAD_COND_INITIALIZER)
+     , mExecutingThreadsCount(0)
++    , mWaitingForThreads(0)
+     , mMaxThreads(DEFAULT_MAX_BINDER_THREADS)
+     , mStarvationStartTimeMs(0)
+     , mBinderContextCheckFunc(nullptr)
+diff --git a/libs/binder/include/binder/ProcessState.h b/libs/binder/include/binder/ProcessState.h
+index e57ff1c26..59fb6dbea 100644
+--- a/libs/binder/include/binder/ProcessState.h
++++ b/libs/binder/include/binder/ProcessState.h
+@@ -110,11 +110,14 @@ private:
+             int                 mDriverFD;
+             void*               mVMStart;
+ 
+-            // Protects thread count variable below.
++            // Protects thread count and wait variables below.
+             pthread_mutex_t     mThreadCountLock;
++            // Broadcast whenever mWaitingForThreads > 0
+             pthread_cond_t      mThreadCountDecrement;
+             // Number of binder threads current executing a command.
+             size_t              mExecutingThreadsCount;
++            // Number of threads calling IPCThreadState::blockUntilThreadAvailable()
++            size_t              mWaitingForThreads;
+             // Maximum number for binder threads allowed for this process.
+             size_t              mMaxThreads;
+             // Time when thread pool was emptied
 -- 
 2.31.0
 
