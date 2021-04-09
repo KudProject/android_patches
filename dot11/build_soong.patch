@@ -1,4 +1,4 @@
-From 8b6788014957ef2e840948783c7b867afd16dba3 Mon Sep 17 00:00:00 2001
+From a5a72fb2227fce93071d1ecc0e1b9cfa3bac05da Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Thu, 1 Apr 2021 17:54:41 +0800
 Subject: [PATCH 1/5] Revert "soong: use -mcpu=cortex-a55 for kryo300 and
@@ -78,10 +78,10 @@ index 8e90ce98..d37e4862 100644
  		"exynos-m2":      "${config.ArmClangCortexA53Cflags}",
  	}
 -- 
-2.31.0
+2.31.1
 
 
-From 092a0e806c77ed25f418db45bc0bc37e83b26b40 Mon Sep 17 00:00:00 2001
+From 8f27a5631b6a7634d5c3832a43edf003bb037f04 Mon Sep 17 00:00:00 2001
 From: Akash <akashniki@gmail.com>
 Date: Sun, 17 May 2020 10:06:20 +0200
 Subject: [PATCH 2/5] soong: Disable sandbox
@@ -109,10 +109,10 @@ index 2de772b0..4874c157 100644
  
  	dumpvarsSandbox = basicSandbox
 -- 
-2.31.0
+2.31.1
 
 
-From 6d0a629fb634b8a7cf1d94a4b44af9136d89d1c1 Mon Sep 17 00:00:00 2001
+From 72dc8c2be39556a35065946d156212270c956643 Mon Sep 17 00:00:00 2001
 From: Daniel Micay <danielmicay@gmail.com>
 Date: Thu, 23 Apr 2020 16:34:04 -0400
 Subject: [PATCH 3/5] use SCHED_BATCH for the build
@@ -136,10 +136,10 @@ index c1c236b9..c2b21aaa 100755
  # that's detected in the Go code, which skips calculating the startup time.
  export TRACE_BEGIN_SOONG=$(date +%s%N)
 -- 
-2.31.0
+2.31.1
 
 
-From 06c22ce2f88c404cc933d06b147cb9aeb5c68cad Mon Sep 17 00:00:00 2001
+From b3e098aeb6bb38a33124905bda1e481f41600262 Mon Sep 17 00:00:00 2001
 From: Raphiel Rollerscaperers <rapherion@raphielgang.org>
 Date: Wed, 6 Jan 2021 20:53:21 +0700
 Subject: [PATCH 4/5] Remove workaround for Qualcomm Kryo 385
@@ -233,10 +233,10 @@ index d37e4862..a5ec9f9d 100644
  		"exynos-m2":      "${config.ArmClangCortexA53Cflags}",
  	}
 -- 
-2.31.0
+2.31.1
 
 
-From c040157b61a6d18fbe97c75d05ff7946ff557b9f Mon Sep 17 00:00:00 2001
+From 4660d36370bf2934cf52c26d25967dd2af53c46f Mon Sep 17 00:00:00 2001
 From: Stephen Hines <srhines@google.com>
 Date: Tue, 16 Jun 2020 02:40:40 -0700
 Subject: [PATCH 5/5] Prefer armv8.2-a to armv8.2a for GNU as compatibility
@@ -266,5 +266,5 @@ index 94db707d..915e7a2d 100644
  	}
  
 -- 
-2.31.0
+2.31.1
 

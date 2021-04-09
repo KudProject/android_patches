@@ -1706,7 +1706,7 @@ index 8e3a4c131..c89294bd2 100644
  FUNCTION_DELEGATE(strncmp, strncmp_mte)
  FUNCTION_DELEGATE(strnlen, strnlen_mte)
 -- 
-2.31.0
+2.31.1
 
 
 From a0bb05c93ff9fbe69880dac8940696e19921b469 Mon Sep 17 00:00:00 2001
@@ -1753,7 +1753,7 @@ index 463ca312a..f52196050 100644
  #undef __bionic_asm_function_type
  #define __bionic_asm_function_type %function
 -- 
-2.31.0
+2.31.1
 
 
 From a57cc40cc5e45f85b6061260c9e83d80a35901f1 Mon Sep 17 00:00:00 2001
@@ -2038,7 +2038,7 @@ index 000000000..5a78da280
 +
 +END(memchr)
 -- 
-2.31.0
+2.31.1
 
 
 From e7a2b64bee127ef246f3b27f71065a29af8d99db Mon Sep 17 00:00:00 2001
@@ -2751,7 +2751,7 @@ index c89294bd2..65a149202 100644
 +FUNCTION_DELEGATE(strrchr, __strrchr_aarch64_mte)
 +FUNCTION_DELEGATE(strncmp, __strncmp_aarch64_mte)
 -- 
-2.31.0
+2.31.1
 
 
 From 24d07a9c4fccbc141c453a1bc24e813251a157ee Mon Sep 17 00:00:00 2001
@@ -3010,7 +3010,7 @@ index f85062408..979a1d792 100644
  	stp	A_l, A_h, [dst, 16]
  	ldp	A_l, A_h, [srcend, -48]
 -- 
-2.31.0
+2.31.1
 
 
 From f9cbe72f1c9b00c79612f8bf2f62b45f1d0798db Mon Sep 17 00:00:00 2001
@@ -3362,7 +3362,7 @@ index 335b7d6ce..7fd6b9a82 100644
  #if defined(WMEMMOVE)
  END(wmemmove)
 -- 
-2.31.0
+2.31.1
 
 
 From 5147aa4a6e61d033875e183449522e1c165d27ea Mon Sep 17 00:00:00 2001
@@ -3632,7 +3632,7 @@ index 3fb738b06..4d145a34a 100644
  	ldp	G_l, G_h, [src, 48]
  	stp	A_l, A_h, [dstend, -16]
 -- 
-2.31.0
+2.31.1
 
 
 From 32ed831cab57315a8100e614f923ae37c76c35df Mon Sep 17 00:00:00 2001
@@ -3870,7 +3870,7 @@ index 12fc09db8..e0a8e84be 100644
 -
  END(memset)
 -- 
-2.31.0
+2.31.1
 
 
 From 1abb23e58ffd45dedf4b0c02c7da8fbb71ac90de Mon Sep 17 00:00:00 2001
@@ -3940,7 +3940,7 @@ index 3b9228c61..8d431e2c2 100644
  double rint(double x) { return __builtin_rint(x); }
  
 -- 
-2.31.0
+2.31.1
 
 
 From 4fa402d8dbc5f2f7663ab5728d902ac58a1764ef Mon Sep 17 00:00:00 2001
@@ -4099,7 +4099,7 @@ index 26edfeb1f..cc884f2e2 100644
 +long double truncl(long double x) { return trunc(x); }
 +#endif
 -- 
-2.31.0
+2.31.1
 
 
 From 2f89fd9d1e75e0f3f42c35c3b0faa85798e70d23 Mon Sep 17 00:00:00 2001
@@ -4593,7 +4593,7 @@ index e410827e2..094fdf648 100644
 +	return roundl(x);
 +}
 -- 
-2.31.0
+2.31.1
 
 
 From 31fb877b6020740c2822539c9d67199eb67d489f Mon Sep 17 00:00:00 2001
@@ -4880,7 +4880,7 @@ index 75abbd235..f6eca05f4 100644
    char buf[BUFSIZ];
    wint_t wc = L'a';
 -- 
-2.31.0
+2.31.1
 
 
 From 1b217b3c1c43f8fbb2acb73289eb32d7945463c9 Mon Sep 17 00:00:00 2001
@@ -6300,7 +6300,7 @@ index 079d69d25..241a080e7 100644
  				mem = 0;
  				continue;
 -- 
-2.31.0
+2.31.1
 
 
 From ca84c63db54c70129f57d8c27b95a6507c7d3060 Mon Sep 17 00:00:00 2001
@@ -6677,7 +6677,7 @@ index 0ed0598f6..f157416c1 100644
  
  TEST(STRING_TEST, strstr_smoke) {
 -- 
-2.31.0
+2.31.1
 
 
 From 985eca83a1a1aaf5a5e7a9c01183589cd174e1f9 Mon Sep 17 00:00:00 2001
@@ -7020,7 +7020,7 @@ index 9c5ed2911..c568ee05d 100644
 +    b       .L_start_realigned
  END(strlen_a15)
 -- 
-2.31.0
+2.31.1
 
 
 From 09f4858d6d85df1ca81b1a39536b8d2d1b350c3f Mon Sep 17 00:00:00 2001
@@ -7186,7 +7186,7 @@ index aaa8f221a..e36042187 100644
 +
 +#include <android/legacy_unistd_inlines.h>
 -- 
-2.31.0
+2.31.1
 
 
 From 5b60ed80ac3fd2097e844ddd5ef28dc2882d2103 Mon Sep 17 00:00:00 2001
@@ -7244,7 +7244,7 @@ index 0468026dc..6e3e22348 100644
  	xseed[1] = temp[1];
  	xseed[2] = (unsigned short) accu;
 -- 
-2.31.0
+2.31.1
 
 
 From c599d03739e3edcdf47fc9cf9c56cc4ca4a6304c Mon Sep 17 00:00:00 2001
@@ -7655,7 +7655,7 @@ index 0fa55c74b..6d0d6f127 100644
 +  ASSERT_EQ(NULL, pututline(NULL));
  }
 -- 
-2.31.0
+2.31.1
 
 
 From d2ead2db94ef42442db620e7a2dd81722e67521a Mon Sep 17 00:00:00 2001
@@ -7815,7 +7815,7 @@ index 583bf32ce..a79bf1a0b 100644
    }
  
 -- 
-2.31.0
+2.31.1
 
 
 From bdd215e5a092417d069df1f42d741a9f0305b6c0 Mon Sep 17 00:00:00 2001
@@ -7859,7 +7859,7 @@ index 1ba869698..f61a45e36 100644
  
  ssize_t hooks_malloc_backtrace(void*, uintptr_t*, size_t) {
 -- 
-2.31.0
+2.31.1
 
 
 From e4bd5ce1f079a6d571b2cd792ab9df2ca213c8b1 Mon Sep 17 00:00:00 2001
@@ -8274,7 +8274,7 @@ index 000000000..f988c6e48
 +  m_cfi_sleb128 (\offset)                         // expr: 1 or 2 bytes
 +.endm
 -- 
-2.31.0
+2.31.1
 
 
 From 17d967ef45f4f574e3be563b35ba861df58a6928 Mon Sep 17 00:00:00 2001
@@ -8457,5 +8457,5 @@ index e1a3c303d..9a2b6988e 100644
  
    const ElfW(Versym)* versym_;
 -- 
-2.31.0
+2.31.1
 

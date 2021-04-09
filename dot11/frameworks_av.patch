@@ -1,4 +1,4 @@
-From 71bb1207e7f2ae156738bf2c7f3f90da0f1e63f6 Mon Sep 17 00:00:00 2001
+From 9a0d9b4b4988b6cd804f54efc1a86f9ad9c230fd Mon Sep 17 00:00:00 2001
 From: Taehwan Kim <t_h.kim@samsung.com>
 Date: Thu, 17 Sep 2020 12:26:40 +0900
 Subject: [PATCH 01/23] CCodec: fix underflow issue on handleImageData
@@ -33,10 +33,10 @@ index bddaa9f22b..692da584ce 100644
                  ALOGD("[%s] updating vstride = %d", mName, vstride);
              }
 -- 
-2.31.0
+2.31.1
 
 
-From 1cb47aeb8e31ffe182f82e30eed9b9fa40d9dbef Mon Sep 17 00:00:00 2001
+From ca45552d84cf8c95eabf5aa2f7d9f24d645b5bc6 Mon Sep 17 00:00:00 2001
 From: Ray Essick <essick@google.com>
 Date: Mon, 14 Sep 2020 17:05:07 -0700
 Subject: [PATCH 02/23] OMX Opus decoder omits sample rate / channel count
@@ -173,10 +173,10 @@ index 83e92b9f43..105e7f7f98 100644
              bool encoder, int32_t numChannels, int32_t sampleRate, int32_t compressionLevel,
              AudioEncoding encoding);
 -- 
-2.31.0
+2.31.1
 
 
-From a1d4f06990a1d0d464ee97446464459101b37515 Mon Sep 17 00:00:00 2001
+From 21d9fbf6fb2a3fe9a5440b6e7e57c36b28ed5011 Mon Sep 17 00:00:00 2001
 From: Wonsik Kim <wonsik@google.com>
 Date: Tue, 22 Sep 2020 18:44:47 -0700
 Subject: [PATCH 03/23] ACodec: submit extra output metadata buffers if in low
@@ -312,10 +312,10 @@ index 105e7f7f98..8ef92783ec 100644
      // If "mKeepComponentAllocated" we only transition back to Loaded state
      // and do not release the component instance.
 -- 
-2.31.0
+2.31.1
 
 
-From 2ca2867ef89a98e31baa7523da50cc98b8e1bf9d Mon Sep 17 00:00:00 2001
+From 048408b5837a0a7a86863f30ce85e4145617f097 Mon Sep 17 00:00:00 2001
 From: Paras Nagda <pnagda@codeaurora.org>
 Date: Tue, 27 Oct 2020 13:01:47 +0530
 Subject: [PATCH 04/23] NuPlayerRenderer: Reset negative media time to zero
@@ -352,10 +352,10 @@ index c30f048c2d..7e8fe45121 100644
              setAudioFirstAnchorTimeIfNeeded_l(mediaTimeUs);
          }
 -- 
-2.31.0
+2.31.1
 
 
-From 235cfd40d2e2ab213a71f3874f3d672dec871bee Mon Sep 17 00:00:00 2001
+From b0dca63b6cacadafd4bbef8d4597a87a8ab88777 Mon Sep 17 00:00:00 2001
 From: Wonsik Kim <wonsik@google.com>
 Date: Thu, 12 Nov 2020 11:14:42 -0800
 Subject: [PATCH 05/23] C2OMXNode: read delay from component to determine
@@ -421,10 +421,10 @@ index c7588e9a51..dd1f4858a5 100644
              break;
          }
 -- 
-2.31.0
+2.31.1
 
 
-From ddd07532ab62d7649ace385373167ee225e58654 Mon Sep 17 00:00:00 2001
+From fca384e5d2b161fb7a577d2d0ddc98d2b17fca4c Mon Sep 17 00:00:00 2001
 From: Sungtak Lee <taklee@google.com>
 Date: Sun, 8 Nov 2020 00:07:27 -0800
 Subject: [PATCH 06/23] CCodec: Increase max linear buffer size for 8K video
@@ -459,10 +459,10 @@ index 4772ab53eb..c383a7ce1a 100644
  /**
   * Base class for representation of buffers at one port.
 -- 
-2.31.0
+2.31.1
 
 
-From abb88075d5bda0f3ba2416f83ae0db1824cd6b95 Mon Sep 17 00:00:00 2001
+From d5a8551f01332563824aa7df5aaa787101954476 Mon Sep 17 00:00:00 2001
 From: Lajos Molnar <lajos@google.com>
 Date: Wed, 12 Aug 2020 15:56:31 -0700
 Subject: [PATCH 07/23] omx: calculate nodePrefix only for components listed in
@@ -516,10 +516,10 @@ index 67f478ead0..b5c116656f 100644
  
  OmxStore::~OmxStore() {
 -- 
-2.31.0
+2.31.1
 
 
-From 436e4a42554c7451e242c335142b5cc83c2c40f8 Mon Sep 17 00:00:00 2001
+From 9abcce76981f955be0a75a540174b310fc15a0fc Mon Sep 17 00:00:00 2001
 From: Wonsik Kim <wonsik@google.com>
 Date: Wed, 25 Nov 2020 10:12:32 -0800
 Subject: [PATCH 08/23] C2AllocatorBlob: allow multiple maps
@@ -643,10 +643,10 @@ index 50c9e59af8..aa054998f8 100644
  
  /* ====================================== BLOB ALLOCATOR ====================================== */
 -- 
-2.31.0
+2.31.1
 
 
-From 1cf537d00c851aa22089cc2c0970048e9462af1f Mon Sep 17 00:00:00 2001
+From a2636e81b8c38256f2fbcff8144cb19879f893bc Mon Sep 17 00:00:00 2001
 From: Wonsik Kim <wonsik@google.com>
 Date: Thu, 3 Dec 2020 11:07:58 -0800
 Subject: [PATCH 09/23] CCodec: fix ByteBuffer mode image
@@ -1190,10 +1190,10 @@ index 5bee605276..ad8f6e555b 100644
 +
  } // namespace android
 -- 
-2.31.0
+2.31.1
 
 
-From 88c016e0ce1560a2eb70bd951979f7a177b1defc Mon Sep 17 00:00:00 2001
+From ab2273e414ac58dd58c9d2d2f25dcb1489b17851 Mon Sep 17 00:00:00 2001
 From: Taehwan Kim <t_h.kim@samsung.com>
 Date: Thu, 26 Nov 2020 22:40:40 +0900
 Subject: [PATCH 10/23] CCodec: GraphicBufferSourceWrapper: fix to apply
@@ -1235,10 +1235,10 @@ index 54107bd852..2f16ca1104 100644
          }
  
 -- 
-2.31.0
+2.31.1
 
 
-From 9cc89915ec20ff16f22374b721122db723df3b63 Mon Sep 17 00:00:00 2001
+From d778904a25e7c0ba82a9182cfc834a5c8c635db9 Mon Sep 17 00:00:00 2001
 From: Houxiang Dai <houxiang.dai@mediatek.com>
 Date: Thu, 23 Jul 2020 14:07:22 +0800
 Subject: [PATCH 11/23] ACodec: Handle HDR10+ metadata at
@@ -1324,10 +1324,10 @@ index 413c7e39a0..acf96fd9b8 100644
              return BaseState::onOMXEvent(event, data1, data2);
      }
 -- 
-2.31.0
+2.31.1
 
 
-From 52db68f465f0674039b86d33b0272dc8a6805424 Mon Sep 17 00:00:00 2001
+From eaa0d2de4d49e75cac63165dcb1d9878ecde5cdd Mon Sep 17 00:00:00 2001
 From: wangchenyang <daniellingyx@gmail.com>
 Date: Thu, 24 Dec 2020 16:55:50 +0800
 Subject: [PATCH 12/23] Codec2: Initialize InputSurfaceWrapper::Config
@@ -1391,10 +1391,10 @@ index bb35763f41..479acb109b 100644
  
      /**
 -- 
-2.31.0
+2.31.1
 
 
-From f64106059aeb1dcbd9be5f9484f4ac1343326a20 Mon Sep 17 00:00:00 2001
+From 6166c0863869b7b0b71943959ae3e64029c97eb4 Mon Sep 17 00:00:00 2001
 From: Wonsik Kim <wonsik@google.com>
 Date: Tue, 5 Jan 2021 18:55:22 -0800
 Subject: [PATCH 13/23] CCodec: workaround for frame drops
@@ -1445,10 +1445,10 @@ index 2f16ca1104..55ff18f4a2 100644
  
          for (size_t i = 0; i < numSlots; ++i) {
 -- 
-2.31.0
+2.31.1
 
 
-From 8e2a98b6cb5a192d9eeae69f17a3630f8c707ee5 Mon Sep 17 00:00:00 2001
+From 6a47653ab4b28eeaf964cc71b5830d94762e6114 Mon Sep 17 00:00:00 2001
 From: Praveen Chavan <pchavan@codeaurora.org>
 Date: Sun, 2 Aug 2020 23:08:33 -0700
 Subject: [PATCH 14/23] CCodec: Optimize output slots for decoder
@@ -1523,10 +1523,10 @@ index 1654b11c31..9a07b299d8 100644
                          }
                      }
 -- 
-2.31.0
+2.31.1
 
 
-From bb870b276f0d07b88dd60b673735f2d95c2b24ae Mon Sep 17 00:00:00 2001
+From 36bcfa3b46b0ce71b6020ecadd70fcb49d6b3b16 Mon Sep 17 00:00:00 2001
 From: Praveen Chavan <pchavan@codeaurora.org>
 Date: Thu, 27 Aug 2020 20:34:11 -0700
 Subject: [PATCH 15/23] CCodec: Do not update pipeline-watcher capacity when
@@ -1638,10 +1638,10 @@ index 0ee90569f5..e7e8b8af67 100644
          return Clock::duration::zero();
      }
 -- 
-2.31.0
+2.31.1
 
 
-From 9c3844f7fd66a9c63095966fc16f304dadcb8ec4 Mon Sep 17 00:00:00 2001
+From c01e00b54bb16c64185151023f87dffe40cbfaf4 Mon Sep 17 00:00:00 2001
 From: Brijesh Patel <pbrijesh@codeaurora.org>
 Date: Wed, 9 Sep 2020 17:30:01 +0530
 Subject: [PATCH 16/23] CCodec: Do not print component name in debug logs if
@@ -1677,10 +1677,10 @@ index 736cfc9158..5f6661c660 100644
      return mPipelineWatcher.lock()->elapsed(PipelineWatcher::Clock::now(), n);
  }
 -- 
-2.31.0
+2.31.1
 
 
-From 49349ddd619b20d88192fadccb3e231df4d5d8c3 Mon Sep 17 00:00:00 2001
+From 5237ce1e295e6e6e6f650043d3fc7b7f1edaa0c9 Mon Sep 17 00:00:00 2001
 From: Shrikara B <shrikara@codeaurora.org>
 Date: Thu, 29 Oct 2020 18:31:20 +0530
 Subject: [PATCH 17/23] Codec2: Reduce smoothness factor for >4K video
@@ -1745,10 +1745,10 @@ index 5f6661c660..064a79fe83 100644
                                  output->numSlots = numOutputSlots;
                                  if (output->buffers->isArrayMode()) {
 -- 
-2.31.0
+2.31.1
 
 
-From 780d94cfdff631d44d83fbefd2cb1f38c603649f Mon Sep 17 00:00:00 2001
+From f95652d1fc56158dacf8ab289ca410eac038676a Mon Sep 17 00:00:00 2001
 From: Brijesh Patel <pbrijesh@codeaurora.org>
 Date: Wed, 25 Nov 2020 12:07:00 +0530
 Subject: [PATCH 18/23] codec2: Avoid invalid access to output format while
@@ -1793,10 +1793,10 @@ index 064a79fe83..a8b5ea9e7d 100644
      }
      sendOutputBuffers();
 -- 
-2.31.0
+2.31.1
 
 
-From 7dea32d9ba261b1108aec7ddabadc5e74e18009c Mon Sep 17 00:00:00 2001
+From 224ca8b51d7280ff313fbfe5b696219dc268ce20 Mon Sep 17 00:00:00 2001
 From: Jiajia Cong <jcong@codeaurora.org>
 Date: Wed, 2 Dec 2020 12:00:49 +0800
 Subject: [PATCH 19/23] codec2: fix issue in allocating too many 8k buffers
@@ -1833,10 +1833,10 @@ index 19414a0a0c..77a567a954 100644
              format,
              aBuffer,
 -- 
-2.31.0
+2.31.1
 
 
-From dd4bad6ed836bdd459fcac6008369525182ae84a Mon Sep 17 00:00:00 2001
+From 89c8d539cca7785d6706f0275c2a177518b735c1 Mon Sep 17 00:00:00 2001
 From: Uma Mehta <umamehta@codeaurora.org>
 Date: Fri, 10 Jul 2020 17:23:12 +0530
 Subject: [PATCH 20/23] codec2: Disable secure encoder test
@@ -1870,10 +1870,10 @@ index ecaf3a83a9..b1be4f1671 100644
      }
  
 -- 
-2.31.0
+2.31.1
 
 
-From 5b26e35d84bd160a89648b8097a52d27ee67a40c Mon Sep 17 00:00:00 2001
+From 1c553522470f0804c7d8a55c29b13aaa5ee33759 Mon Sep 17 00:00:00 2001
 From: "ming.zhou" <ming.zhou@nxp.com>
 Date: Fri, 11 Oct 2019 11:14:07 +0800
 Subject: [PATCH 21/23] codec2: Fix software decoder display issue
@@ -2304,10 +2304,10 @@ index 3eef1e3939..91238e8e7d 100644
                  dstYStride, dstUVStride,
                  mWidth, mHeight);
 -- 
-2.31.0
+2.31.1
 
 
-From de9bf20f7487d6b64d4e939700f56805dd5d96ae Mon Sep 17 00:00:00 2001
+From c36ad9c07282ea8cb262d1dd65430fac5a4a2a21 Mon Sep 17 00:00:00 2001
 From: Lajos Molnar <lajos@google.com>
 Date: Sun, 7 Feb 2021 13:06:10 -0800
 Subject: [PATCH 22/23] CCodec: Make HDR10/+ support detection logic work for
@@ -2347,10 +2347,10 @@ index b11224907e..a26f89ed6e 100644
                  break;
              default:
 -- 
-2.31.0
+2.31.1
 
 
-From d84297edfcc53edc5b9d50651a862e29f0f18c40 Mon Sep 17 00:00:00 2001
+From 74135a4cad1e348d4e3f2e9325bbdfd851423b07 Mon Sep 17 00:00:00 2001
 From: Wonsik Kim <wonsik@google.com>
 Date: Mon, 1 Mar 2021 16:40:33 -0800
 Subject: [PATCH 23/23] CCodec: Move lower-res workaround to C2OMXNode
@@ -2437,5 +2437,5 @@ index 55ff18f4a2..e8ff155ae8 100644
  
          for (size_t i = 0; i < numSlots; ++i) {
 -- 
-2.31.0
+2.31.1
 

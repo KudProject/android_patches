@@ -152,7 +152,7 @@ index 4cb083d4f..667af9bbd 100644
      /* Checks whether a given application pid/uid has permission to inject input events
       * into other applications.
 -- 
-2.31.0
+2.31.1
 
 
 From d4f15701e2c6f951549becf924792917306f592d Mon Sep 17 00:00:00 2001
@@ -184,7 +184,7 @@ index fd910b46b..b025989d3 100644
                  *dropReason = DropReason::POLICY;
                  ALOGI("Key from FOD");
 -- 
-2.31.0
+2.31.1
 
 
 From ec41140fd5c6e20f787bf952439def18599c1af9 Mon Sep 17 00:00:00 2001
@@ -217,7 +217,7 @@ index b025989d3..fc575cdce 100644
                  *dropReason = DropReason::POLICY;
                  ALOGI("Key from FOD");
 -- 
-2.31.0
+2.31.1
 
 
 From e26b72ce8d6ae7bd00db1420a1d39c64c530d06e Mon Sep 17 00:00:00 2001
@@ -287,7 +287,7 @@ index 97dc0f137..f82c2a4ee 100644
              reinterpret_cast<GetDisplayPlatformFunc>(dlsym(so, "ANGLEGetDisplayPlatform"));
  
 -- 
-2.31.0
+2.31.1
 
 
 From 8431a3780c241a2b1176988501205faa398d93d6 Mon Sep 17 00:00:00 2001
@@ -384,7 +384,7 @@ index f82c2a4ee..d98c1ba1f 100644
  
      angleGetDisplayPlatform =
 -- 
-2.31.0
+2.31.1
 
 
 From 792422f45a6d207e0192bdd18e56a122cbcf075b Mon Sep 17 00:00:00 2001
@@ -475,7 +475,7 @@ index 222d6c751..64d1a4c8f 100644
  
      /* ------------------------------------------------------------------------
 -- 
-2.31.0
+2.31.1
 
 
 From 1951ac840241bdc3492e4f7a4a822589017707ca Mon Sep 17 00:00:00 2001
@@ -545,7 +545,7 @@ index d4cd11dbe..5e5d51c99 100644
  
  // TODO(b/129481165): remove the #pragma below and fix conversion issues
 -- 
-2.31.0
+2.31.1
 
 
 From ee308dc7bb28ab80589ee994373fdb9cc544df5f Mon Sep 17 00:00:00 2001
@@ -650,5 +650,5 @@ index e57ff1c26..59fb6dbea 100644
              size_t              mMaxThreads;
              // Time when thread pool was emptied
 -- 
-2.31.0
+2.31.1
 

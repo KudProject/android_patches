@@ -1,7 +1,7 @@
 From 054a55524c3f521501df259962a82c1b9dfb83e5 Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Fri, 2 Apr 2021 13:01:04 +0800
-Subject: [PATCH] abi-dumps/vndk: Update libbinder.so
+Subject: [PATCH 1/2] abi-dumps/vndk: Update libbinder.so
 
 Signed-off-by: Albert I <kras@raphielgang.org>
 Change-Id: I70cc8ab5f42dfb92584365aa223d3b6c1f9a46ac
@@ -2865,5 +2865,40 @@ index b773f58..f86eb28 100644
     "alignment" : 4,
     "fields" :
 -- 
-2.31.0
+2.31.1
+
+
+From 32f8aa24f4a3d81f5f6f9a26cfd88f19882839a4 Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Fri, 9 Apr 2021 04:23:44 +0800
+Subject: [PATCH 2/2] abi-dumps/vndk: Also add symlinks for armv8-2a on API 30
+
+Fixes: 55a11ca ("vndk: add symlinks for armv8-2a")
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: Ib6b136d40b9a936bb8ea418865d60db5089a34f7
+---
+ 30/64/arm64_armv8-2a | 1 +
+ 30/64/arm_armv8-2a   | 1 +
+ 2 files changed, 2 insertions(+)
+ create mode 120000 30/64/arm64_armv8-2a
+ create mode 120000 30/64/arm_armv8-2a
+
+diff --git a/30/64/arm64_armv8-2a b/30/64/arm64_armv8-2a
+new file mode 120000
+index 0000000..66b62d7
+--- /dev/null
++++ b/30/64/arm64_armv8-2a
+@@ -0,0 +1 @@
++arm64_armv8-a
+\ No newline at end of file
+diff --git a/30/64/arm_armv8-2a b/30/64/arm_armv8-2a
+new file mode 120000
+index 0000000..86f2ec5
+--- /dev/null
++++ b/30/64/arm_armv8-2a
+@@ -0,0 +1 @@
++arm_armv8-a
+\ No newline at end of file
+-- 
+2.31.1
 

@@ -1,4 +1,4 @@
-From aed362d0fdf59c7411b28df6bbca687a7bdc7625 Mon Sep 17 00:00:00 2001
+From b668664d3407e53a5b94eea3c553623276430959 Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Tue, 30 Mar 2021 00:44:07 +0800
 Subject: [PATCH 1/5] fw/b: Revert button backlight changes
@@ -582,7 +582,7 @@ index 267affc02d7..75ec2248602 100644
  
  
 diff --git a/services/core/jni/com_android_server_power_PowerManagerService.cpp b/services/core/jni/com_android_server_power_PowerManagerService.cpp
-index 33b3bad2b33..917d4bba8bc 100644
+index edd33d9fd1a..adfe1655f80 100644
 --- a/services/core/jni/com_android_server_power_PowerManagerService.cpp
 +++ b/services/core/jni/com_android_server_power_PowerManagerService.cpp
 @@ -44,7 +44,6 @@
@@ -593,7 +593,7 @@ index 33b3bad2b33..917d4bba8bc 100644
  
  #include "com_android_server_power_PowerManagerService.h"
  
-@@ -351,8 +350,7 @@ static void sendPowerHint(PowerHint hintId, uint32_t data) {
+@@ -349,8 +348,7 @@ static void sendPowerHint(PowerHint hintId, uint32_t data) {
      SurfaceComposerClient::notifyPowerHint(static_cast<int32_t>(hintId));
  }
  
@@ -603,7 +603,7 @@ index 33b3bad2b33..917d4bba8bc 100644
      if (gPowerManagerServiceObj) {
          // Throttle calls into user activity by event type.
          // We're a little conservative about argument checking here in case the caller
-@@ -374,14 +372,9 @@ void android_server_PowerManagerService_userActivity(nsecs_t eventTime, int32_t
+@@ -372,14 +370,9 @@ void android_server_PowerManagerService_userActivity(nsecs_t eventTime, int32_t
  
          JNIEnv* env = AndroidRuntime::getJNIEnv();
  
@@ -634,10 +634,10 @@ index 1dfd7bbca0e..a17fd650522 100644
  } // namespace android
  
 -- 
-2.31.0
+2.31.1
 
 
-From 66daf8fc3d3e7ef95d6e76a1a706aafc59a3f701 Mon Sep 17 00:00:00 2001
+From 5bb9636ecb621dfbd5d7aea52e9fdb879050204e Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Sat, 20 Mar 2021 05:20:39 +0800
 Subject: [PATCH 2/5] Revert "Merge "Revert "Fix merge error and reallow
@@ -676,10 +676,10 @@ index 2e438dfbda8..8ac6886a36b 100644
              } else if (vol.disk.isSd()) {
                  vol.mountFlags |= VolumeInfo.MOUNT_FLAG_VISIBLE;
 -- 
-2.31.0
+2.31.1
 
 
-From a3a59936c41411d8ea0755a8ceac1f09f7c15eb5 Mon Sep 17 00:00:00 2001
+From 54edeb0313a0cf9809501f97488e49781b52ab26 Mon Sep 17 00:00:00 2001
 From: Han Wang <416810799@qq.com>
 Date: Wed, 17 Feb 2021 06:17:04 +0100
 Subject: [PATCH 3/5] Install seccomp filter even if selinux is permissive
@@ -751,10 +751,10 @@ index 9eede83e21e..be00f6383e5 100644
  
    /*
 -- 
-2.31.0
+2.31.1
 
 
-From a7e53e9d0cf3286eaabcea1355b005ad176e8ebe Mon Sep 17 00:00:00 2001
+From 21336ad4bd715a85b31b600b9f76bc054edf9245 Mon Sep 17 00:00:00 2001
 From: Chris Crump <chris@cypheros.co>
 Date: Sat, 5 Oct 2019 00:13:58 -0400
 Subject: [PATCH 4/5] SystemUI: Update keyguard indication margin when fod is
@@ -916,10 +916,10 @@ index b47c59acb82..cbab4c6ba6b 100644
  
      public void updateLeftAffordance() {
 -- 
-2.31.0
+2.31.1
 
 
-From 0fb1b39f59e76f52ce54da0ca8e374a6339b62bf Mon Sep 17 00:00:00 2001
+From 3afaeb0f8e42d9b4d3721c92aaa59dda25d08b27 Mon Sep 17 00:00:00 2001
 From: Dil3mm4 <dil3mm4.dev@gmail.com>
 Date: Mon, 30 Nov 2020 04:31:41 +0000
 Subject: [PATCH 5/5] SystemUI: Don't show FOD icon/pad keyguard if strong auth
@@ -979,5 +979,5 @@ index b8d19392c14..00af5d6c4d2 100644
              // Keyguard is shown just after screen turning off
              return;
 -- 
-2.31.0
+2.31.1
 
