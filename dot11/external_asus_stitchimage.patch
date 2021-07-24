@@ -1,0 +1,39 @@
+From 2ab431a0165df979145d9b75fcbeaa835dc0bd25 Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Thu, 15 Jul 2021 00:02:25 +0800
+Subject: [PATCH] stitchimage: Enable dexpreopt
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+---
+ Android.bp | 10 ++--------
+ 1 file changed, 2 insertions(+), 8 deletions(-)
+
+diff --git a/Android.bp b/Android.bp
+index c204415..2f96947 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -1,10 +1,7 @@
+ android_app_import {
+     name: "StitchImage",
+     apk: "prebuilt/priv-app/StitchImage/StitchImage.apk",
+-	certificate: "platform",
+-    dex_preopt: {
+-        enabled: false,
+-    },
++    certificate: "platform",
+     privileged: true,
+     required: [
+         "StitchImage-res",
+@@ -15,8 +12,5 @@ android_app_import {
+ android_app_import {
+     name: "StitchImageService",
+     apk: "prebuilt/app/StitchImageService/StitchImageService.apk",
+-	certificate: "platform",
+-    dex_preopt: {
+-        enabled: false,
+-    },
++    certificate: "platform",
+ }
+-- 
+2.31.1
+

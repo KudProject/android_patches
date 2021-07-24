@@ -1,7 +1,7 @@
-From 92ce721dea6b6fe08e62f6348a70f2fb4aa4ea2f Mon Sep 17 00:00:00 2001
+From d1b8ea24ec9d67ae3d349b77015e895d64144cd7 Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Tue, 9 Mar 2021 03:59:28 +0800
-Subject: [PATCH 1/2] prebuilt: Don't override Gallery2
+Subject: [PATCH 1/4] prebuilt: Don't override Gallery2
 
 * Personally I still prefer to use AOSP Gallery for everything else
 
@@ -12,10 +12,10 @@ Change-Id: Id5d38b9e5f1afe7475c3854b446eb45fad56b1fa
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/common/Android.bp b/common/Android.bp
-index cf280b3..92c23f8 100644
+index e84e4b3..1c17485 100644
 --- a/common/Android.bp
 +++ b/common/Android.bp
-@@ -169,7 +169,7 @@ android_app_import {
+@@ -180,7 +180,7 @@ android_app_import {
  
  android_app_import {
  	name: "Photos",
@@ -25,13 +25,13 @@ index cf280b3..92c23f8 100644
  	apk: "proprietary/product/app/Photos/Photos.apk",
  	presigned: true,
 -- 
-2.31.0
+2.31.1
 
 
-From ec09da24e75a6c701c5b7a76dd3f2403a74c7e5a Mon Sep 17 00:00:00 2001
+From b927e0c2ea9da159fb63b849d3c5f98d0e13e54f Mon Sep 17 00:00:00 2001
 From: Albert I <kras@raphielgang.org>
 Date: Tue, 30 Mar 2021 17:31:13 +0800
-Subject: [PATCH 2/2] GmsConfigOverlay: Don't override
+Subject: [PATCH 2/4] GmsConfigOverlay: Don't override
  config_defaultAssistantAccessComponent
 
 * com.google.android.ext.services is an Apex module
@@ -57,5 +57,500 @@ index 4dfac29..3020741 100644
      <string name="config_defaultDialer" translatable="false">com.google.android.dialer</string>
  
 -- 
-2.31.0
+2.31.1
+
+
+From 532b719765885d8e4978f1c6f7f09111bb8057aa Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Wed, 2 Jun 2021 20:47:49 +0800
+Subject: [PATCH 3/4] gms: Opt out from including Google Chrome by default
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: I44a23ca540933df17c03ddcfa7a57c6a9833a3d2
+---
+ common/common-vendor.mk | 19 +++++++++++++------
+ 1 file changed, 13 insertions(+), 6 deletions(-)
+
+diff --git a/common/common-vendor.mk b/common/common-vendor.mk
+index 6db9a99..1af5b48 100644
+--- a/common/common-vendor.mk
++++ b/common/common-vendor.mk
+@@ -9,9 +9,6 @@ dot_device := $(patsubst %f,%,$(subst dot_,,$(TARGET_PRODUCT)))
+ 
+ PRODUCT_COPY_FILES += \
+     vendor/gms/common/proprietary/etc/permissions/privapp-permissions-google.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/permissions/privapp-permissions-google.xml \
+-    vendor/gms/common/proprietary/product/app/Chrome/Chrome.apk.gz:$(TARGET_COPY_OUT_PRODUCT)/app/Chrome/Chrome.apk.gz \
+-    vendor/gms/common/proprietary/product/app/TrichromeLibrary/TrichromeLibrary.apk.gz:$(TARGET_COPY_OUT_PRODUCT)/app/TrichromeLibrary/TrichromeLibrary.apk.gz \
+-    vendor/gms/common/proprietary/product/app/WebViewGoogle/WebViewGoogle.apk.gz:$(TARGET_COPY_OUT_PRODUCT)/app/WebViewGoogle/WebViewGoogle.apk.gz \
+     vendor/gms/common/proprietary/product/etc/permissions/com.google.android.dialer.support.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/permissions/com.google.android.dialer.support.xml \
+     vendor/gms/common/proprietary/product/etc/permissions/privapp-permissions-google-p.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/permissions/privapp-permissions-google-p.xml \
+     vendor/gms/common/proprietary/product/etc/permissions/split-permissions-google.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/permissions/split-permissions-google.xml \
+@@ -41,7 +38,6 @@ PRODUCT_PACKAGES += \
+     DocumentsUIGoogle \
+     CalculatorGooglePrebuilt \
+     CalendarGooglePrebuilt \
+-    Chrome-Stub \
+     GoogleContacts \
+     GoogleContactsSyncAdapter \
+     GoogleTTS \
+@@ -53,8 +49,6 @@ PRODUCT_PACKAGES += \
+     PrebuiltBugle \
+     PrebuiltDeskClockGoogle \
+     PrebuiltGmail \
+-    TrichromeLibrary-Stub \
+-    WebViewGoogle-Stub \
+     AndroidAutoStubPrebuilt \
+     AndroidMigratePrebuilt \
+     ConfigUpdater \
+@@ -89,6 +83,19 @@ PRODUCT_PACKAGES += \
+     RecorderPrebuilt
+ endif
+ 
++# Chrome
++ifeq ($(TARGET_WANTS_GOOGLE_CHROME),true)
++PRODUCT_COPY_FILES += \
++    vendor/gms/common/proprietary/product/app/Chrome/Chrome.apk.gz:$(TARGET_COPY_OUT_PRODUCT)/app/Chrome/Chrome.apk.gz \
++    vendor/gms/common/proprietary/product/app/TrichromeLibrary/TrichromeLibrary.apk.gz:$(TARGET_COPY_OUT_PRODUCT)/app/TrichromeLibrary/TrichromeLibrary.apk.gz \
++    vendor/gms/common/proprietary/product/app/WebViewGoogle/WebViewGoogle.apk.gz:$(TARGET_COPY_OUT_PRODUCT)/app/WebViewGoogle/WebViewGoogle.apk.gz
++
++PRODUCT_PACKAGES += \
++    Chrome-Stub \
++    TrichromeLibrary-Stub \
++    WebViewGoogle-Stub
++endif
++
+ # Google Camera
+ ifneq ($(filter bonito sargo taimen walleye,$(dot_device)),)
+ PRODUCT_PACKAGES += \
+-- 
+2.31.1
+
+
+From 615f8f8cf8735ab6f4f2c0906c368d54ff22f691 Mon Sep 17 00:00:00 2001
+From: Albert I <kras@raphielgang.org>
+Date: Sat, 24 Jul 2021 18:49:23 +0800
+Subject: [PATCH 4/4] gms: Dexpreopt by default
+
+Signed-off-by: Albert I <kras@raphielgang.org>
+Change-Id: I74a4828ab78562b3f4d083f3dbf5fec9e4f55ac3
+---
+ common/Android.bp | 123 ----------------------------------------------
+ 1 file changed, 123 deletions(-)
+
+diff --git a/common/Android.bp b/common/Android.bp
+index 1c17485..8a27fb4 100644
+--- a/common/Android.bp
++++ b/common/Android.bp
+@@ -11,9 +11,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/app/GoogleExtShared/GoogleExtShared.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ }
+ 
+ android_app_import {
+@@ -22,9 +19,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/app/GooglePrintRecommendationService/GooglePrintRecommendationService.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ }
+ 
+ 
+@@ -34,9 +28,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/priv-app/DocumentsUIGoogle/DocumentsUIGoogle.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ }
+ 
+@@ -45,9 +36,6 @@ android_app_import {
+         owner: "gms",
+         apk: "proprietary/product/app/arcore/arcore.apk",
+         presigned: true,
+-        dex_preopt: {
+-                enabled: false,
+-        },
+         product_specific: true,
+ }
+ 
+@@ -57,9 +45,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/CalculatorGooglePrebuilt/CalculatorGooglePrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -69,9 +54,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/CalendarGooglePrebuilt/CalendarGooglePrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -81,9 +63,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/GoogleCamera/GoogleCamera.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -93,9 +72,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/Chrome-Stub/Chrome-Stub.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -105,9 +81,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/GoogleContacts/GoogleContacts.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -116,9 +89,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/GoogleContactsSyncAdapter/GoogleContactsSyncAdapter.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -127,9 +97,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/GoogleTTS/GoogleTTS.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -139,9 +106,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/LatinIMEGooglePrebuilt/LatinIMEGooglePrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -150,9 +114,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/LocationHistoryPrebuilt/LocationHistoryPrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -161,9 +122,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/Maps/Maps.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -172,9 +130,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/MarkupGoogle/MarkupGoogle.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -184,9 +139,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/Photos/Photos.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -196,9 +148,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/PrebuiltBugle/PrebuiltBugle.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -208,9 +157,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/PrebuiltDeskClockGoogle/PrebuiltDeskClockGoogle.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -219,9 +165,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/SoundPickerPrebuilt/SoundPickerPrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -230,9 +173,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/TrichromeLibrary-Stub/TrichromeLibrary-Stub.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -241,9 +181,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/app/WebViewGoogle-Stub/WebViewGoogle-Stub.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	product_specific: true,
+ }
+ 
+@@ -252,9 +189,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/AndroidAutoStubPrebuilt/AndroidAutoStubPrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -264,9 +198,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/AndroidMigratePrebuilt/AndroidMigratePrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -276,9 +207,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/ConfigUpdater/ConfigUpdater.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -288,9 +216,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/DevicePersonalizationPrebuiltPixel2020/DevicePersonalizationPrebuiltPixel2020.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -300,9 +225,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/FilesPrebuilt/FilesPrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -313,9 +235,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/GoogleDialer/GoogleDialer.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -325,9 +244,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/PartnerSetupPrebuilt/PartnerSetupPrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -337,9 +253,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/Phonesky/Phonesky.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -349,9 +262,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/PrebuiltGmsCore/PrebuiltGmsCore.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -361,9 +271,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/PrebuiltGmsCore/m/independent/AndroidPlatformServices.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -373,9 +280,6 @@ android_app_import {
+         owner: "gms",
+         apk: "proprietary/product/priv-app/RecorderPrebuilt/RecorderPrebuilt.apk",
+         presigned: true,
+-        dex_preopt: {
+-                enabled: false,
+-        },
+         privileged: true,
+         product_specific: true,
+ }
+@@ -386,9 +290,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/SetupWizardPrebuilt/SetupWizardPrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -398,9 +299,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/TurboPrebuilt/TurboPrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -411,9 +309,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/Velvet/Velvet.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -423,9 +318,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/product/priv-app/WellbeingPrebuilt/WellbeingPrebuilt.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	product_specific: true,
+ }
+@@ -435,9 +327,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/system_ext/priv-app/GoogleFeedback/GoogleFeedback.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	system_ext_specific: true,
+ }
+@@ -447,9 +336,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/system_ext/priv-app/GoogleOneTimeInitializer/GoogleOneTimeInitializer.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	system_ext_specific: true,
+ }
+@@ -459,9 +345,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/system_ext/priv-app/GoogleServicesFramework/GoogleServicesFramework.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	system_ext_specific: true,
+ }
+@@ -472,9 +355,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/system_ext/priv-app/NexusLauncherRelease/NexusLauncherRelease.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	system_ext_specific: true,
+ }
+@@ -484,9 +364,6 @@ android_app_import {
+ 	owner: "gms",
+ 	apk: "proprietary/system_ext/priv-app/PixelSetupWizard/PixelSetupWizard.apk",
+ 	presigned: true,
+-	dex_preopt: {
+-		enabled: false,
+-	},
+ 	privileged: true,
+ 	system_ext_specific: true,
+ }
+-- 
+2.31.1
 
